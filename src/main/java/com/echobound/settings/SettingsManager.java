@@ -35,6 +35,7 @@ public class SettingsManager {
             settings.sfxVolume = Float.parseFloat(props.getProperty("sfxVolume", "1.0"));
             settings.cameraShakeEnabled = Boolean.parseBoolean(props.getProperty("cameraShakeEnabled", "true"));
             settings.showDebugOverlay = Boolean.parseBoolean(props.getProperty("showDebugOverlay", "false"));
+            settings.firstTimeUser = Boolean.parseBoolean(props.getProperty("firstTimeUser", "true"));
 
             String res = props.getProperty("resolutionProfile", "PIXEL_STANDARD");
             try {
@@ -55,6 +56,7 @@ public class SettingsManager {
             props.setProperty("sfxVolume", String.valueOf(settings.sfxVolume));
             props.setProperty("cameraShakeEnabled", String.valueOf(settings.cameraShakeEnabled));
             props.setProperty("showDebugOverlay", String.valueOf(settings.showDebugOverlay));
+            props.setProperty("firstTimeUser", String.valueOf(settings.firstTimeUser));
             props.setProperty("resolutionProfile", settings.resolutionProfile.name());
 
             try (OutputStream out = Files.newOutputStream(configPath)) {

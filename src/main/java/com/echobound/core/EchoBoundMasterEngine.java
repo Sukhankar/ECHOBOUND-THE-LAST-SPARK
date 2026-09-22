@@ -16,6 +16,9 @@ import com.echobound.settings.SettingsManager;
 import com.echobound.ui.menu.GameState;
 import com.echobound.ui.menu.MenuUIRenderer;
 import com.echobound.ui.menu.TitleMenuController;
+import com.echobound.assets.AssetManager;
+import com.echobound.tutorial.TutorialStep;
+import com.echobound.ui.windows.InGameWindowType;
 import com.echobound.ui.windows.WindowManager;
 
 import java.awt.*;
@@ -32,12 +35,14 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     private final SettingsManager settingsManager;
     private final TitleMenuController menuController;
     private final WindowManager windowManager;
+    private final AssetManager assetManager;
     private final PixelSandboxRenderer renderer;
     private final SandboxHUD hud;
     private final EchoSandboxClone echo;
 
     private boolean running = false;
     private Thread gameThread;
+    private boolean initialTutorialShown = false;
 
     // Camera
     private float camX = 0;
@@ -63,6 +68,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         this.settingsManager = new SettingsManager();
         this.menuController = new TitleMenuController(saveManager, settingsManager);
         this.windowManager = new WindowManager();
+        this.assetManager = new AssetManager();
         this.renderer = new PixelSandboxRenderer();
         this.hud = new SandboxHUD();
         this.echo = new EchoSandboxClone();
@@ -136,6 +142,13 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
         if (state == GameState.PLAYING) {
             sessionPlayTime += dt;
+
+            // Auto-show tutorial for first-time adventurers
+            if (!initialTutorialShown && settingsManager.getSettings().firstTimeUser) {
+                windowManager.setActiveWindow(InGameWindowType.TUTORIAL_CONTROLS);
+                initialTutorialShown = true;
+            }
+
             windowManager.update(dt);
 
             if (windowManager.hasActiveWindow()) {
@@ -159,6 +172,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
             if (jumpJustPressed) {
                 ctx.soundEngine.play(ctx.player.isGrounded() ? SoundType.JUMP : SoundType.DOUBLE_JUMP);
+                windowManager.tutorialWindow.tutorialManager.completeStep(TutorialStep.MOVEMENT);
             }
             if (dashJustPressed) {
                 ctx.soundEngine.play(SoundType.DASH);
@@ -357,7 +371,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
         if (state == GameState.PLAYING) {
             // First let active modal window or window hotkeys handle the key
-            if (windowManager.handleKeyPress(code, ctx)) {
+            if (windowManager.handleKeyPress(code, ctx, settingsManager)) {
                 return;
             }
 
@@ -389,6 +403,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             }
             // Echo Loop Toggle
             if (code == KeyEvent.VK_X) {
+                windowManager.tutorialWindow.tutorialManager.completeStep(TutorialStep.ECHO);
                 if (echo.isRecording) echo.stopRecording();
                 else if (echo.isActive) echo.stopPlayback();
                 else if (echo.hasRecordedData()) echo.startPlayback();
@@ -396,9 +411,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             }
             // Cast Spells
             if (code == KeyEvent.VK_Q) {
+                windowManager.tutorialWindow.tutorialManager.completeStep(TutorialStep.MAGIC);
                 ctx.castDualSpell(MagicSchool.EMBER, MagicSchool.GALE, new Vec3(ctx.player.facingDirX, ctx.player.facingDirY, 0));
             }
             if (code == KeyEvent.VK_E) {
+                windowManager.tutorialWindow.tutorialManager.completeStep(TutorialStep.MAGIC);
                 ctx.castDualSpell(MagicSchool.TIDE, MagicSchool.VOLT, new Vec3(ctx.player.facingDirX, ctx.player.facingDirY, 0));
             }
             // Talk to NPC
@@ -455,5 +472,9 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
     public WindowManager getWindowManager() {
         return windowManager;
+    }
+
+    public AssetManager getAssetManager() {
+        return assetManager;
     }
 }

@@ -1,6 +1,7 @@
 package com.echobound.ui.windows;
 
 import com.echobound.core.UnifiedGameContext;
+import com.echobound.settings.SettingsManager;
 
 import java.awt.*;
 import java.awt.event.KeyEvent;
@@ -11,6 +12,7 @@ public class WindowManager {
     public final InventoryEquipmentWindow inventoryWindow = new InventoryEquipmentWindow();
     public final CraftingWindow craftingWindow = new CraftingWindow();
     public final QuestLogWindow questLogWindow = new QuestLogWindow();
+    public final TutorialControlsWindow tutorialWindow = new TutorialControlsWindow();
 
     public InGameWindowType getActiveWindow() {
         return activeWindow;
@@ -37,6 +39,10 @@ public class WindowManager {
     }
 
     public boolean handleKeyPress(int keyCode, UnifiedGameContext ctx) {
+        return handleKeyPress(keyCode, ctx, null);
+    }
+
+    public boolean handleKeyPress(int keyCode, UnifiedGameContext ctx, SettingsManager settingsManager) {
         if (!hasActiveWindow()) {
             // Check window toggles
             if (keyCode == KeyEvent.VK_I || keyCode == KeyEvent.VK_TAB) {
@@ -47,6 +53,9 @@ public class WindowManager {
                 return true;
             } else if (keyCode == KeyEvent.VK_J) {
                 toggleWindow(InGameWindowType.QUEST_LOG);
+                return true;
+            } else if (keyCode == KeyEvent.VK_H || keyCode == KeyEvent.VK_F1) {
+                toggleWindow(InGameWindowType.TUTORIAL_CONTROLS);
                 return true;
             }
             return false;
@@ -71,6 +80,10 @@ public class WindowManager {
             closeAllWindows();
             return true;
         }
+        if ((keyCode == KeyEvent.VK_H || keyCode == KeyEvent.VK_F1) && activeWindow == InGameWindowType.TUTORIAL_CONTROLS) {
+            closeAllWindows();
+            return true;
+        }
 
         // Forward to specific active window
         switch (activeWindow) {
@@ -82,6 +95,12 @@ public class WindowManager {
                 return true;
             case QUEST_LOG:
                 questLogWindow.handleKeyPress(keyCode, ctx);
+                return true;
+            case TUTORIAL_CONTROLS:
+                tutorialWindow.handleKeyPress(keyCode, ctx, settingsManager);
+                if (keyCode == KeyEvent.VK_ENTER || keyCode == KeyEvent.VK_SPACE) {
+                    closeAllWindows();
+                }
                 return true;
             default:
                 return false;
@@ -98,7 +117,7 @@ public class WindowManager {
         if (!hasActiveWindow()) return;
 
         // Semi-transparent dark background tint over world
-        g.setColor(new Color(0, 0, 0, 150));
+        g.setColor(new Color(0, 0, 0, 160));
         g.fillRect(0, 0, width, height);
 
         switch (activeWindow) {
@@ -110,6 +129,9 @@ public class WindowManager {
                 break;
             case QUEST_LOG:
                 questLogWindow.render(g, ctx, width, height);
+                break;
+            case TUTORIAL_CONTROLS:
+                tutorialWindow.render(g, ctx, width, height);
                 break;
             default:
                 break;

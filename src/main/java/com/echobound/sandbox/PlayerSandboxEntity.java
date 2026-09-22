@@ -107,7 +107,7 @@ public class PlayerSandboxEntity {
         }
 
         if (!isDashing) {
-            float speed = MOVE_SPEED;
+            float speed = customMoveSpeed;
             vel.x = moveX * speed;
             vel.y = moveY * speed;
 
@@ -238,5 +238,60 @@ public class PlayerSandboxEntity {
                 canDoubleJump = true;
             }
         }
+    }
+
+    private float customMoveSpeed = MOVE_SPEED;
+
+    public Vec3 getPosition() {
+        return pos;
+    }
+
+    public boolean isGrounded() {
+        return onGround;
+    }
+
+    public void setMaxSpeed(float speed) {
+        this.customMoveSpeed = speed;
+    }
+
+    public float getMaxSpeed() {
+        return customMoveSpeed;
+    }
+
+    public boolean jump() {
+        if (onGround) {
+            vel.z = JUMP_Z_SPEED;
+            onGround = false;
+            canDoubleJump = true;
+            return true;
+        } else if (canDoubleJump) {
+            vel.z = JUMP_Z_SPEED * 0.9f;
+            canDoubleJump = false;
+            return true;
+        }
+        return false;
+    }
+
+    public boolean dash(float dirX, float dirY) {
+        if (dashCooldown <= 0 && !isDashing && sparkEnergy >= 15.0f) {
+            isDashing = true;
+            dashTimer = 0.18f;
+            dashCooldown = 0.60f;
+            sparkEnergy -= 15.0f;
+            float len = (float) Math.hypot(dirX, dirY);
+            if (len > 0.001f) {
+                vel.x = (dirX / len) * 360.0f;
+                vel.y = (dirY / len) * 360.0f;
+            } else {
+                vel.x = facingDirX * 360.0f;
+                vel.y = facingDirY * 360.0f;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    public void update(float dt, SandboxWorld world) {
+        update(world, false, false, false, false, false, false, false, false, false, dt);
     }
 }

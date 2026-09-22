@@ -43,6 +43,16 @@ public class Vec3 {
         this.z -= other.z;
     }
 
+    public Vec3 subtract(Vec3 other) {
+        return new Vec3(this.x - other.x, this.y - other.y, this.z - other.z);
+    }
+
+    public Vec3 normalized() {
+        Vec3 v = new Vec3(this);
+        v.normalize();
+        return v;
+    }
+
     public void mul(float scalar) {
         this.x *= scalar;
         this.y *= scalar;

@@ -26,4 +26,12 @@ public class ObjectPool<T> {
     public int getCapacity() {
         return capacity;
     }
+
+    @SuppressWarnings("unchecked")
+    public T get(int index) {
+        if (index >= 0 && index < capacity) {
+            return (T) pool[index];
+        }
+        return null;
+    }
 }

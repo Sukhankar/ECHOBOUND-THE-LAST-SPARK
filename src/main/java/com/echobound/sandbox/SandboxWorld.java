@@ -30,6 +30,10 @@ public class SandboxWorld {
         return chunk;
     }
 
+    public int getLoadedChunkCount() {
+        return chunks.size();
+    }
+
     public BlockType getBlock(int wx, int wy, int wz) {
         if (wz < 0 || wz >= WorldChunk.CHUNK_SIZE_Z) {
             return BlockType.AIR;

@@ -94,7 +94,7 @@ public class WorldChunk {
                     if (treeChance > 0.82 && lx > 1 && lx < CHUNK_SIZE_X - 2 && ly > 1 && ly < CHUNK_SIZE_Y - 2) {
                         // Place tree trunk
                         blocks[lx][ly][surfaceZ + 1] = BlockType.WOOD_LOG;
-                        if (surfaceZ + 2 < CHUNK_SIZE_Z) {
+                        if (surfaceZ + 3 < CHUNK_SIZE_Z) {
                             blocks[lx][ly][surfaceZ + 2] = BlockType.WOOD_LOG;
                             blocks[lx][ly][surfaceZ + 3] = BlockType.LEAVES;
                             if (lx + 1 < CHUNK_SIZE_X) blocks[lx + 1][ly][surfaceZ + 2] = BlockType.LEAVES;

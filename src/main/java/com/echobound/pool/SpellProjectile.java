@@ -34,6 +34,10 @@ public class SpellProjectile {
         this.active = true;
     }
 
+    public void spawn(float x, float y, float z, float vx, float vy, float vz, int damage, float life) {
+        init(x, y, z, vx, vy, vz, life, damage, null, Color.CYAN);
+    }
+
     public void update(float dt) {
         if (!active) return;
         x += vx * dt;

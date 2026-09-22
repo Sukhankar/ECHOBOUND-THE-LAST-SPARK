@@ -31,7 +31,9 @@ public class Window {
         panel = new GamePanel();
         panel.setPreferredSize(new Dimension(1280, 720));
         panel.setFocusable(true);
-        panel.addKeyListener(input);
+        if (input != null) {
+            panel.addKeyListener(input);
+        }
 
         frame.setContentPane(panel);
         frame.pack();
@@ -39,6 +41,30 @@ public class Window {
         frame.setVisible(true);
 
         windowedBounds = frame.getBounds();
+    }
+
+    public Window(String title) {
+        this(title, null);
+    }
+
+    public void addKeyListener(java.awt.event.KeyListener l) {
+        panel.addKeyListener(l);
+    }
+
+    public void addMouseListener(java.awt.event.MouseListener l) {
+        panel.addMouseListener(l);
+    }
+
+    public void addMouseMotionListener(java.awt.event.MouseMotionListener l) {
+        panel.addMouseMotionListener(l);
+    }
+
+    public void addMouseWheelListener(java.awt.event.MouseWheelListener l) {
+        panel.addMouseWheelListener(l);
+    }
+
+    public JPanel getPanel() {
+        return panel;
     }
 
     public Graphics2D getBufferGraphics() {

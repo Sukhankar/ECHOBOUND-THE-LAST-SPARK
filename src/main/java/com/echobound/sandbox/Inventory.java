@@ -94,4 +94,9 @@ public class Inventory {
     public int getMaterialCount(String key) {
         return materials.getOrDefault(key, 0);
     }
+
+    public void cycleSlot(int direction) {
+        int dir = (direction > 0) ? 1 : (direction < 0 ? -1 : 0);
+        selectedSlot = (selectedSlot + dir + QUICK_SLOT_COUNT) % QUICK_SLOT_COUNT;
+    }
 }

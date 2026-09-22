@@ -96,4 +96,24 @@ public class EchoSandboxClone {
     public PlayerSandboxEntity getGhostEntity() {
         return ghostEntity;
     }
+
+    public boolean isRecording() {
+        return isRecording;
+    }
+
+    public boolean isPlaying() {
+        return isActive;
+    }
+
+    public boolean hasRecordedData() {
+        return !recordedFrames.isEmpty();
+    }
+
+    public void startPlayback() {
+        deploy();
+    }
+
+    public void stopPlayback() {
+        isActive = false;
+    }
 }

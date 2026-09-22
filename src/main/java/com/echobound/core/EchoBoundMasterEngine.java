@@ -16,6 +16,7 @@ import com.echobound.settings.SettingsManager;
 import com.echobound.ui.menu.GameState;
 import com.echobound.ui.menu.MenuUIRenderer;
 import com.echobound.ui.menu.TitleMenuController;
+import com.echobound.ui.windows.WindowManager;
 
 import java.awt.*;
 import java.awt.event.*;
@@ -30,6 +31,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     private final SaveManager saveManager;
     private final SettingsManager settingsManager;
     private final TitleMenuController menuController;
+    private final WindowManager windowManager;
     private final PixelSandboxRenderer renderer;
     private final SandboxHUD hud;
     private final EchoSandboxClone echo;
@@ -60,6 +62,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         this.saveManager = new SaveManager();
         this.settingsManager = new SettingsManager();
         this.menuController = new TitleMenuController(saveManager, settingsManager);
+        this.windowManager = new WindowManager();
         this.renderer = new PixelSandboxRenderer();
         this.hud = new SandboxHUD();
         this.echo = new EchoSandboxClone();
@@ -133,6 +136,15 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
         if (state == GameState.PLAYING) {
             sessionPlayTime += dt;
+            windowManager.update(dt);
+
+            if (windowManager.hasActiveWindow()) {
+                jumpJustPressed = false;
+                dashJustPressed = false;
+                rightClickJustPressed = false;
+                ctx.update(dt);
+                return;
+            }
 
             // Player Traversal Input
             boolean inLeft = keys[KeyEvent.VK_A] || keys[KeyEvent.VK_LEFT];
@@ -218,9 +230,18 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             }
         }
 
+        // Render Particles & Floating Damage Numbers
+        ctx.particleFXManager.render(g, camX, camY);
+        ctx.floatingTextManager.render(g, camX, camY);
+
         // Render HUD
         hud.render(g, ctx.player, echo, ctx.dayNightCycle,
                    Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
+
+        // Render In-Game Modal Windows (Inventory, Crafting, Quest Log)
+        if (windowManager.hasActiveWindow()) {
+            windowManager.render(g, ctx, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
+        }
 
         // Render NPC Dialogue prompt if near NPC
         if (activeDialogueNPC != null) {
@@ -335,6 +356,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         }
 
         if (state == GameState.PLAYING) {
+            // First let active modal window or window hotkeys handle the key
+            if (windowManager.handleKeyPress(code, ctx)) {
+                return;
+            }
+
             if (code == KeyEvent.VK_SPACE) jumpJustPressed = true;
             if (code == KeyEvent.VK_SHIFT) dashJustPressed = true;
             if (code == KeyEvent.VK_ESCAPE) {
@@ -425,5 +451,9 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
     public TitleMenuController getMenuController() {
         return menuController;
+    }
+
+    public WindowManager getWindowManager() {
+        return windowManager;
     }
 }

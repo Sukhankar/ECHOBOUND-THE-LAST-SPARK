@@ -19,6 +19,7 @@ import com.echobound.faction.FactionManager;
 import com.echobound.farming.CropType;
 import com.echobound.farming.FarmingManager;
 import com.echobound.items.EquipmentManager;
+import com.echobound.items.ItemRegistry;
 import com.echobound.magic.MagicSchool;
 import com.echobound.magic.RelicManager;
 import com.echobound.magic.Spell;
@@ -69,6 +70,12 @@ public class UnifiedGameContext {
     public final TreasureManager treasureManager;
     public final PuzzleManager puzzleManager;
 
+    // FX & Windows
+    public final com.echobound.fx.ParticleFXManager particleFXManager;
+    public final com.echobound.fx.FloatingTextManager floatingTextManager;
+    public com.echobound.items.BackpackTier backpackTier = com.echobound.items.BackpackTier.STARTER;
+    public ModdedWeapon activeWeapon;
+
     // Projectile Object Pool
     public final ObjectPool<SpellProjectile> spellPool;
     public final Map<Integer, Integer> playerInventory = new HashMap<>();
@@ -78,6 +85,10 @@ public class UnifiedGameContext {
         this.player = new PlayerSandboxEntity(0, 0, 10);
         this.dayNightCycle = new DayNightCycle();
         this.soundEngine = new SoundEngine();
+
+        this.particleFXManager = new com.echobound.fx.ParticleFXManager();
+        this.floatingTextManager = new com.echobound.fx.FloatingTextManager();
+        this.activeWeapon = new ModdedWeapon(ItemRegistry.WEAPON_IRON_SWORD, 25);
 
         this.mobManager = new MobManager();
         this.cookingManager = new CookingManager();
@@ -136,6 +147,10 @@ public class UnifiedGameContext {
         // 9. Fishing & Puzzles
         fishingEngine.update(dt);
         puzzleManager.update(player.getPosition(), null);
+
+        // 10. FX Updates
+        particleFXManager.update(dt);
+        floatingTextManager.update(dt);
     }
 
     public boolean performJump() {
@@ -173,6 +188,11 @@ public class UnifiedGameContext {
             soundEngine.play(SoundType.CAST_SPELL);
         }
 
+        // Elemental particle burst
+        particleFXManager.spawnElementalBurst(spawnPos.x, spawnPos.y, spawnPos.z + 1.0f, s1, 12);
+        particleFXManager.spawnElementalBurst(spawnPos.x, spawnPos.y, spawnPos.z + 1.0f, s2, 12);
+        floatingTextManager.spawnMessage(spawnPos.x, spawnPos.y, spawnPos.z + 14.0f, combined.name, combined.spellColor);
+
         // Damage mobs in line of fire
         AABB3D spellHitArea = new AABB3D(
             spawnPos.x - 2.0f, spawnPos.y - 2.0f, spawnPos.z - 1.0f,
@@ -205,5 +225,9 @@ public class UnifiedGameContext {
         );
         mobManager.applyDamageArea(attackArea, damage, player.getPosition(), playerInventory);
         soundEngine.play(SoundType.MINE_BLOCK);
+
+        // Attack FX
+        particleFXManager.spawnBurst(attackCenter.x, attackCenter.y, attackCenter.z, new java.awt.Color(255, 215, 60), 10, 45.0f);
+        floatingTextManager.spawnDamage(attackCenter.x, attackCenter.y, attackCenter.z + 10.0f, damage, weapon.hasEchoDuplicate());
     }
 }

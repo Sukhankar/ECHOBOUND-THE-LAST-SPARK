@@ -1,8 +1,12 @@
 package com.echobound.core;
 
+import com.echobound.animation.AnimationController;
+import com.echobound.animation.NPCVisualController;
+import com.echobound.assets.AssetManager;
 import com.echobound.audio.SoundType;
 import com.echobound.companion.PetType;
 import com.echobound.entity.mob.MobEntity;
+import com.echobound.entity.mob.MobType;
 import com.echobound.magic.MagicSchool;
 import com.echobound.npc.NPCDefinition;
 import com.echobound.physics3d.Vec3;
@@ -13,17 +17,20 @@ import com.echobound.sandbox.SandboxHUD;
 import com.echobound.sandbox.WorldChunk;
 import com.echobound.save.SaveManager;
 import com.echobound.settings.SettingsManager;
+import com.echobound.tutorial.TutorialStep;
+import com.echobound.ui.dev.AnimationViewerOverlay;
+import com.echobound.ui.dev.PerformanceDebugOverlay;
 import com.echobound.ui.menu.GameState;
 import com.echobound.ui.menu.MenuUIRenderer;
 import com.echobound.ui.menu.TitleMenuController;
-import com.echobound.assets.AssetManager;
-import com.echobound.tutorial.TutorialStep;
 import com.echobound.ui.windows.InGameWindowType;
 import com.echobound.ui.windows.WindowManager;
 
 import java.awt.*;
 import java.awt.event.*;
-import com.echobound.core.Quality;
+import java.awt.image.BufferedImage;
+import java.util.HashMap;
+import java.util.Map;
 
 public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListener, MouseMotionListener, MouseWheelListener {
     private static final double FIXED_DT = 1.0 / 60.0;
@@ -39,6 +46,16 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     private final PixelSandboxRenderer renderer;
     private final SandboxHUD hud;
     private final EchoSandboxClone echo;
+    private final NPCVisualController npcVisualController;
+    private final AnimationViewerOverlay animationViewerOverlay;
+
+    private final Map<MobType, AnimationController> mobAnimControllers = new HashMap<>();
+    private boolean showAnimationViewer = false;
+    private boolean showPerformanceHUD = false;
+    private float lastPhysicsTimeMs = 0.0f;
+    private float lastRenderTimeMs = 0.0f;
+    private float lastFrameTimeMs = 0.0f;
+    private float currentFps = 60.0f;
 
     private boolean running = false;
     private Thread gameThread;
@@ -69,9 +86,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         this.menuController = new TitleMenuController(saveManager, settingsManager);
         this.windowManager = new WindowManager();
         this.assetManager = new AssetManager();
-        this.renderer = new PixelSandboxRenderer();
+        this.renderer = new PixelSandboxRenderer(this.assetManager);
         this.hud = new SandboxHUD();
         this.echo = new EchoSandboxClone();
+        this.npcVisualController = assetManager.createNPCVisualController(ctx.npcManager);
+        this.animationViewerOverlay = new AnimationViewerOverlay(this.assetManager);
 
         // Spawn player on surface
         int topZ = ctx.world.getTopSolidBlockZ(8, 8);
@@ -106,14 +125,23 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
                 elapsed = 250_000_000L;
             }
 
+            if (elapsed > 0) {
+                currentFps = (float) (1_000_000_000.0 / elapsed);
+            }
+
             accumulator += elapsed / 1_000_000_000.0;
 
+            long tickStart = System.nanoTime();
             while (accumulator >= FIXED_DT) {
                 tick((float) FIXED_DT);
                 accumulator -= FIXED_DT;
             }
+            lastPhysicsTimeMs = (System.nanoTime() - tickStart) / 1_000_000.0f;
 
+            long renderStart = System.nanoTime();
             render();
+            lastRenderTimeMs = (System.nanoTime() - renderStart) / 1_000_000.0f;
+            lastFrameTimeMs = (System.nanoTime() - now) / 1_000_000.0f;
 
             long sleepNanos = TIME_STEP_NANOS - (System.nanoTime() - now);
             if (sleepNanos > 0) {
@@ -129,6 +157,10 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
     private void tick(float dt) {
         GameState state = menuController.getCurrentState();
+
+        if (showAnimationViewer) {
+            animationViewerOverlay.update(dt);
+        }
 
         if (state == GameState.LOADING || state == GameState.TITLE_MENU ||
             state == GameState.OPTIONS_MENU || state == GameState.SAVE_SELECT_MENU) {
@@ -150,6 +182,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             }
 
             windowManager.update(dt);
+
+            // Update Living NPCs with schedule routines
+            for (NPCDefinition npc : ctx.npcManager.getAll()) {
+                npcVisualController.update(npc, dt);
+            }
 
             if (windowManager.hasActiveWindow()) {
                 jumpJustPressed = false;
@@ -214,29 +251,76 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             return;
         }
 
-        // Render Voxel World & Traversal
+        // 1. Render Voxel World & Traversal with Layered Equipment & Animated Weapon
         renderer.render(g, ctx.world, ctx.player, echo, ctx.dayNightCycle,
-                        camX, camY, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT, Quality.HIGH);
+                        camX, camY, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT, Quality.HIGH,
+                        ctx.equipmentManager, ctx.activeWeapon);
 
-        // Render Active Mobs
+        // 2. Render Living NPCs with schedule-driven animations
+        for (NPCDefinition npc : ctx.npcManager.getAll()) {
+            int nx = (int) (npc.x - camX);
+            int ny = (int) (npc.y - npc.z * 0.75f - camY);
+            if (nx < -40 || nx > Window.INTERNAL_WIDTH + 40 || ny < -40 || ny > Window.INTERNAL_HEIGHT + 40) continue;
+
+            // Ground drop shadow
+            g.setColor(new Color(0, 0, 0, 75));
+            g.fillOval(nx - 7, ny - 2, 14, 5);
+
+            // Animated NPC Sprite from schedule controller
+            BufferedImage npcFrame = npcVisualController != null ? npcVisualController.getCurrentFrame(npc.id) : null;
+            if (npcFrame != null) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+                g2.drawImage(npcFrame, nx - 16, ny - 30, 32, 32, null);
+                g2.dispose();
+            }
+
+            // Name Tag & Profession badge
+            g.setFont(new Font("Monospaced", Font.BOLD, 9));
+            g.setColor(new Color(255, 230, 140));
+            FontMetrics fm = g.getFontMetrics();
+            int nw = fm.stringWidth(npc.name);
+            g.drawString(npc.name, nx - nw / 2, ny - 33);
+
+            if (npc.currentActivity != null && !npc.currentActivity.isEmpty()) {
+                g.setFont(new Font("Monospaced", Font.PLAIN, 8));
+                g.setColor(new Color(180, 210, 255));
+                String actStr = "[" + npc.currentActivity + "]";
+                int aw = g.getFontMetrics().stringWidth(actStr);
+                g.drawString(actStr, nx - aw / 2, ny - 42);
+            }
+        }
+
+        // 3. Render Active Mobs with multi-frame animated pixel sprites
         for (MobEntity mob : ctx.mobManager.getActiveMobs()) {
             if (!mob.isAlive) continue;
             int sx = (int) (mob.position.x - camX);
             int sy = (int) (mob.position.y - mob.position.z * 0.75f - camY);
 
-            // Draw mob sprite representation
-            g.setColor(new Color(180, 40, 50));
-            g.fillRect(sx - 5, sy - 10, 10, 10);
+            // Ground drop shadow
+            g.setColor(new Color(0, 0, 0, 75));
+            g.fillOval(sx - 8, sy - 3, 16, 6);
 
-            // Health bar
-            g.setColor(Color.RED);
-            g.fillRect(sx - 8, sy - 14, 16, 2);
-            g.setColor(Color.GREEN);
-            int hpW = (int) (16.0f * ((float) mob.currentHealth / mob.type.maxHealth));
-            g.fillRect(sx - 8, sy - 14, hpW, 2);
+            // Animated Mob Sprite
+            AnimationController mobAnim = mobAnimControllers.computeIfAbsent(mob.type, assetManager::createMobAnimationController);
+            mobAnim.update(0.016f);
+            BufferedImage mobFrame = mobAnim.getCurrentFrame();
+            if (mobFrame != null) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+                g2.drawImage(mobFrame, sx - 16, sy - 28, 32, 32, null);
+                g2.dispose();
+            }
+
+            // Health bar with pixel frame
+            g.setColor(new Color(20, 20, 30, 210));
+            g.fillRect(sx - 10, sy - 32, 20, 4);
+            g.setColor(new Color(220, 40, 50));
+            int hpW = Math.max(0, (int) (18.0f * ((float) mob.currentHealth / mob.type.maxHealth)));
+            g.fillRect(sx - 9, sy - 31, hpW, 2);
         }
 
-        // Render Projectiles
+        // 4. Render Projectiles
         for (int i = 0; i < ctx.spellPool.getCapacity(); i++) {
             SpellProjectile p = ctx.spellPool.get(i);
             if (p != null && p.active) {
@@ -244,54 +328,83 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             }
         }
 
-        // Render Particles & Floating Damage Numbers
+        // 5. Render Particles & Floating Damage Numbers
         ctx.particleFXManager.render(g, camX, camY);
         ctx.floatingTextManager.render(g, camX, camY);
 
-        // Render HUD
+        // 6. Render HUD
         hud.render(g, ctx.player, echo, ctx.dayNightCycle,
                    Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
 
-        // Render In-Game Modal Windows (Inventory, Crafting, Quest Log)
+        // 7. Render In-Game Modal Windows (Inventory, Crafting, Quest Log)
         if (windowManager.hasActiveWindow()) {
             windowManager.render(g, ctx, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
         }
 
-        // Render NPC Dialogue prompt if near NPC
+        // 8. Render NPC Dialogue prompt if near NPC
         if (activeDialogueNPC != null) {
             renderDialogueBox(g, activeDialogueNPC);
         }
 
-        // Render Pause Menu if PAUSED
+        // 9. Render Pause Menu if PAUSED
         if (state == GameState.PAUSED) {
             renderPauseMenu(g);
+        }
+
+        // 10. Developer Overlays: Animation Viewer [F9] & Performance Debug HUD [F10]
+        if (showAnimationViewer) {
+            animationViewerOverlay.render(g, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
+        }
+        if (showPerformanceHUD) {
+            PerformanceDebugOverlay.render(g, ctx, assetManager, currentFps,
+                                           lastFrameTimeMs, lastPhysicsTimeMs, lastRenderTimeMs,
+                                           Window.INTERNAL_WIDTH);
         }
 
         window.present();
     }
 
     private void renderDialogueBox(Graphics2D g, NPCDefinition npc) {
-        int boxW = 440;
-        int boxH = 60;
+        int boxW = 460;
+        int boxH = 68;
         int boxX = (Window.INTERNAL_WIDTH - boxW) / 2;
-        int boxY = Window.INTERNAL_HEIGHT - 80;
+        int boxY = Window.INTERNAL_HEIGHT - 86;
 
-        g.setColor(new Color(15, 20, 35, 220));
+        g.setColor(new Color(15, 20, 35, 240));
         g.fillRect(boxX, boxY, boxW, boxH);
         g.setColor(new Color(0, 240, 255));
         g.drawRect(boxX, boxY, boxW, boxH);
+        g.setColor(new Color(255, 215, 0));
+        g.drawRect(boxX + 2, boxY + 2, boxW - 4, boxH - 4);
 
+        // NPC 32x32 pixel portrait (rendered 48x48)
+        BufferedImage portrait = assetManager.getNPCPortrait(npc.name);
+        int portraitX = boxX + 8;
+        int portraitY = boxY + 10;
+        int pSize = 48;
+        g.setColor(new Color(25, 30, 45));
+        g.fillRect(portraitX, portraitY, pSize, pSize);
+        g.setColor(new Color(0, 240, 255, 120));
+        g.drawRect(portraitX, portraitY, pSize, pSize);
+        if (portrait != null) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            g2.drawImage(portrait, portraitX, portraitY, pSize, pSize, null);
+            g2.dispose();
+        }
+
+        int textX = boxX + 66;
         g.setFont(new Font("Monospaced", Font.BOLD, 12));
         g.setColor(new Color(255, 215, 0));
-        g.drawString(npc.name + " (" + npc.faction.displayName + ")", boxX + 12, boxY + 18);
+        g.drawString(npc.name + " [" + npc.faction.displayName + "]", textX, boxY + 20);
 
         g.setFont(new Font("Monospaced", Font.PLAIN, 11));
         g.setColor(Color.WHITE);
-        g.drawString(npc.getDialogue("GREETING"), boxX + 12, boxY + 36);
+        g.drawString("\"" + npc.getDialogue("GREETING") + "\"", textX, boxY + 38);
 
         g.setFont(new Font("Monospaced", Font.ITALIC, 9));
         g.setColor(new Color(150, 160, 190));
-        g.drawString("[F / ESC] Close Dialogue", boxX + 12, boxY + 52);
+        g.drawString("[F / ESC] Close Dialogue", textX, boxY + 56);
     }
 
     private void renderPauseMenu(Graphics2D g) {
@@ -322,6 +435,26 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         int code = e.getKeyCode();
         if (code >= 0 && code < keys.length) {
             keys[code] = true;
+        }
+
+        // Developer Hotkeys [F9] Animation Viewer & [F10] Performance HUD
+        if (code == KeyEvent.VK_F9) {
+            showAnimationViewer = !showAnimationViewer;
+            return;
+        }
+        if (code == KeyEvent.VK_F10) {
+            showPerformanceHUD = !showPerformanceHUD;
+            return;
+        }
+
+        if (showAnimationViewer) {
+            if (code == KeyEvent.VK_ESCAPE) {
+                showAnimationViewer = false;
+                return;
+            }
+            if (animationViewerOverlay.handleKeyPress(code)) {
+                return;
+            }
         }
 
         GameState state = menuController.getCurrentState();
@@ -476,5 +609,29 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
     public AssetManager getAssetManager() {
         return assetManager;
+    }
+
+    public AnimationViewerOverlay getAnimationViewerOverlay() {
+        return animationViewerOverlay;
+    }
+
+    public NPCVisualController getNPCVisualController() {
+        return npcVisualController;
+    }
+
+    public boolean isAnimationViewerOpen() {
+        return showAnimationViewer;
+    }
+
+    public void toggleAnimationViewer() {
+        showAnimationViewer = !showAnimationViewer;
+    }
+
+    public boolean isPerformanceHUDOpen() {
+        return showPerformanceHUD;
+    }
+
+    public void togglePerformanceHUD() {
+        showPerformanceHUD = !showPerformanceHUD;
     }
 }

@@ -1,0 +1,31 @@
+package com.echobound.animation;
+
+public enum AnimationState {
+    IDLE,
+    WALK,
+    RUN,
+    JUMP,
+    FALL,
+    DOUBLE_JUMP,
+    DASH,
+    GLIDE,
+    WALL_CLING,
+    WALL_JUMP,
+    MINE,
+    BUILD,
+    ATTACK,
+    HEAVY_ATTACK,
+    HURT,
+    DEAD,
+    INTERACT,
+    CAST_MAGIC,
+    ECHO_RECORD,
+    ECHO_RELEASE,
+    FISHING,
+    CLIMBING,
+    MOUNTING,
+    SWIMMING,
+    WORK,
+    SIT,
+    SLEEP
+}

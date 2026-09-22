@@ -13,6 +13,7 @@ public class GameSettings implements Serializable {
     public boolean cameraShakeEnabled = true;
     public boolean showDebugOverlay = false;
     public boolean vsync = true;
+    public boolean firstTimeUser = true;
 
     public void cycleResolution() {
         if (resolutionProfile == ResolutionProfile.PIXEL_SAVER) {

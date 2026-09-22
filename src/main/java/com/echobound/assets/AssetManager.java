@@ -24,7 +24,14 @@ import java.util.Map;
 public class AssetManager {
     private static final String DEFAULT_ASSETS_DIR = "assets";
     private final File baseDir;
+
+    /** Processed sheets built by RealPixelAssetPipeline (preferred). */
+    private final File processedDir;
+
     private final Map<String, BufferedImage> spriteCache = new HashMap<>();
+
+    /** How many processed sheets were loaded from real pixel-art sources. */
+    private int realAssetSheetsLoaded = 0;
 
     public AssetManager() {
         this(new File(DEFAULT_ASSETS_DIR));
@@ -32,12 +39,31 @@ public class AssetManager {
 
     public AssetManager(File baseDir) {
         this.baseDir = baseDir;
+        this.processedDir = new File(baseDir, "processed");
+        // Run Part-13 pipeline to materialise processed/ sheets from external/
+        runRealPixelPipelineIfNeeded();
         ensureDefaultAssetsExist();
         preloadAll();
     }
 
-    public File getBaseDir() {
-        return baseDir;
+    public File getBaseDir() { return baseDir; }
+    public File getProcessedDir() { return processedDir; }
+    public int getRealAssetSheetsLoaded() { return realAssetSheetsLoaded; }
+
+    /**
+     * Invoke the Part-13 pipeline once to populate assets/processed/ from
+     * assets/external/ CC0 sources.  Silently skips if external/ is absent.
+     */
+    private void runRealPixelPipelineIfNeeded() {
+        try {
+            File externalDir = new File(baseDir, "external");
+            if (!externalDir.isDirectory()) return;
+
+            RealPixelAssetPipeline pipeline = new RealPixelAssetPipeline(baseDir);
+            realAssetSheetsLoaded = pipeline.buildAll();
+        } catch (Exception ignored) {
+            // Never crash the game because of asset pipeline failures
+        }
     }
 
     public void ensureDefaultAssetsExist() {
@@ -160,6 +186,19 @@ public class AssetManager {
     }
 
     private BufferedImage loadSprite(String relativePath) {
+        // Priority 1: processed/ (real pixel art from Part-13 pipeline)
+        File processed = new File(processedDir, relativePath);
+        if (processed.exists()) {
+            try {
+                BufferedImage img = ImageIO.read(processed);
+                if (img != null) {
+                    spriteCache.put(relativePath, img);
+                    return img;
+                }
+            } catch (IOException ignored) {}
+        }
+
+        // Priority 2: legacy assets/ location (Parts 1-12)
         File file = new File(baseDir, relativePath);
         if (file.exists()) {
             try {
@@ -170,6 +209,8 @@ public class AssetManager {
                 }
             } catch (IOException ignored) {}
         }
+
+        // Priority 3: procedural fallback (always succeeds)
         BufferedImage fallback = generateFallback(relativePath);
         spriteCache.put(relativePath, fallback);
         return fallback;
@@ -829,6 +870,8 @@ public class AssetManager {
 
     public static void main(String[] args) {
         AssetManager am = new AssetManager(new File("assets"));
-        System.out.println("AssetManager initialized. Cached sprites: " + am.getCachedSpriteCount());
+        System.out.println("AssetManager initialized.");
+        System.out.println("  Cached sprites      : " + am.getCachedSpriteCount());
+        System.out.println("  Real-asset sheets   : " + am.getRealAssetSheetsLoaded());
     }
 }

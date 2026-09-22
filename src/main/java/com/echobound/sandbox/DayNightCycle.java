@@ -23,6 +23,10 @@ public class DayNightCycle {
         return timeOfDay;
     }
 
+    public void setTimeOfDay(float timeOfDay) {
+        this.timeOfDay = (timeOfDay % 24.0f + 24.0f) % 24.0f;
+    }
+
     public int getDayCount() {
         return dayCount;
     }

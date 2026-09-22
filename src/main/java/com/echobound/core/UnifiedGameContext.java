@@ -34,6 +34,9 @@ import com.echobound.sandbox.DayNightCycle;
 import com.echobound.sandbox.PlayerSandboxEntity;
 import com.echobound.sandbox.SandboxWorld;
 import com.echobound.story.StoryProgressionEngine;
+import com.echobound.fishing.FishingEngine;
+import com.echobound.treasure.TreasureManager;
+import com.echobound.puzzle.PuzzleManager;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -62,6 +65,9 @@ public class UnifiedGameContext {
     public final MuseumManager museumManager;
     public final ArcadeCabinet arcadeCabinet;
     public final PostGameEngine postGameEngine;
+    public final FishingEngine fishingEngine;
+    public final TreasureManager treasureManager;
+    public final PuzzleManager puzzleManager;
 
     // Projectile Object Pool
     public final ObjectPool<SpellProjectile> spellPool;
@@ -90,6 +96,9 @@ public class UnifiedGameContext {
         this.museumManager = new MuseumManager();
         this.arcadeCabinet = new ArcadeCabinet("Spark Runner Classic");
         this.postGameEngine = new PostGameEngine();
+        this.fishingEngine = new FishingEngine();
+        this.treasureManager = new TreasureManager();
+        this.puzzleManager = new PuzzleManager();
 
         this.spellPool = new ObjectPool<>(64, SpellProjectile::new);
     }
@@ -123,6 +132,10 @@ public class UnifiedGameContext {
 
         // 8. Story Progression & Post-Game unlocks
         postGameEngine.checkStoryProgression(storyEngine);
+
+        // 9. Fishing & Puzzles
+        fishingEngine.update(dt);
+        puzzleManager.update(player.getPosition(), null);
     }
 
     public boolean performJump() {

@@ -161,47 +161,52 @@ public class RealPixelAssetPipeline {
         }
     }
 
-    // ── Step 2: NPC Sheet from Kenney roguelike characters (256×576) ─────────
+    // ── Step 2: NPC Sheet from "32x32 RPG Character Sprites" (256×576) ───────
+
+    /**
+     * Source is the CC0 "32x32 RPG Character Sprites" pack (opengameart.org/content/
+     * 32x32-rpg-character-sprites, by Eldiran): a 384×672 sheet, 32×32 cells on a 12×21 grid.
+     * Confirmed visually off a labeled contact sheet: each character's full standing pose is
+     * drawn tall across TWO stacked cells (a 32×64 region — head/shoulders in the top cell,
+     * torso/legs in the bottom), not one 32×32 cell alone, so a single cell only ever shows
+     * half a character. Nine row-pairs (0-1, 2-3, ... 16-17), column 0, were hand-picked for
+     * visually distinct NPC archetypes (robed priest, villager, knight, hooded rogue, gilded
+     * paladin, etc.). The source uses classic magenta (255,0,255) color-key transparency, not
+     * an alpha channel, so it's keyed out to real alpha here before compositing — left as-is,
+     * every NPC would render inside a solid pink box.
+     */
+    private static final int RPGCHAR_CELL = 32;
+    private static final int[] NPC_SOURCE_ROW_PAIRS = {0, 2, 4, 6, 8, 10, 12, 14, 16};
 
     private void buildNPCSheet() {
-        File src = new File(externalDir, "characters/kenney_roguelike_characters.png");
+        File src = new File(externalDir, "characters/rpg_characters.png");
         if (!src.exists()) {
-            log("[SKIP] npc_sheet — kenney_roguelike_characters.png not found");
+            log("[SKIP] npc_sheet — rpg_characters.png not found");
             return;
         }
         try {
-            BufferedImage source = ImageIO.read(src);
-            if (source == null) { log("[FAIL] npc_sheet — could not read source"); return; }
+            BufferedImage raw = ImageIO.read(src);
+            if (raw == null) { log("[FAIL] npc_sheet — could not read source"); return; }
+            BufferedImage source = keyOutMagenta(raw);
 
-            // Kenney roguelike characters: 16×16 sprites arranged in a grid
-            int srcTileW = 16, srcTileH = 16;
-            int srcCols  = source.getWidth() / srcTileW;
-            int srcRows  = source.getHeight() / srcTileH;
-            if (srcCols == 0 || srcRows == 0) { log("[FAIL] npc_sheet — source too small"); return; }
-
-            // Build 9 NPC × 2 rows (IDLE+WORK row, SIT+SLEEP row) at 32×32
-            // Each NPC gets a unique character from the Kenney sheet
-            int npcCount = Math.min(9, srcCols * srcRows);
-            BufferedImage npcSheet = new BufferedImage(256, 576, BufferedImage.TYPE_INT_ARGB);
+            int npcCount = NPC_SOURCE_ROW_PAIRS.length;
+            BufferedImage npcSheet = new BufferedImage(256, npcCount * 2 * NPC_FRAME_H, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = npcSheet.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
             for (int npc = 0; npc < npcCount; npc++) {
-                // Source character tile from kenney sheet
-                int srcCol = npc % srcCols;
-                int srcRow = npc / srcCols;
-                if (srcRow >= srcRows) break;
+                int topRow = NPC_SOURCE_ROW_PAIRS[npc];
+                // Full 32×64 standing pose (both stacked cells), scaled down to one 32×32 NPC
+                // token — a deliberate squash, not a crop, so the whole character silhouette
+                // (head to feet) still reads in the smaller space this game's NPCs use.
                 BufferedImage charTile = source.getSubimage(
-                    srcCol * srcTileW, srcRow * srcTileH, srcTileW, srcTileH);
+                    0, topRow * RPGCHAR_CELL, RPGCHAR_CELL, RPGCHAR_CELL * 2);
 
-                // Destination: npc*2 rows at 32×32, 8 cols
                 int dstRow0 = npc * 2;       // IDLE / WORK row
                 int dstRow1 = npc * 2 + 1;   // SIT / SLEEP row
                 for (int c = 0; c < 8; c++) {
-                    // IDLE/WORK row: draw char tile scaled to 32×32
                     g.drawImage(charTile, c * NPC_FRAME_W, dstRow0 * NPC_FRAME_H,
                                 NPC_FRAME_W, NPC_FRAME_H, null);
-                    // SIT/SLEEP row: slightly darker tint
                     g.drawImage(charTile, c * NPC_FRAME_W, dstRow1 * NPC_FRAME_H,
                                 NPC_FRAME_W, NPC_FRAME_H, null);
                     if (c >= 4) { // SIT shading
@@ -580,6 +585,25 @@ public class RealPixelAssetPipeline {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** Converts classic magenta (255,0,255) color-key transparency to real alpha=0.
+     *  Several older CC0 packs (e.g. the Eldiran RPG character sheet) predate widespread
+     *  PNG alpha-channel authoring and instead reserve pure magenta as "not part of the
+     *  sprite" — composited as-is it renders as a solid pink box around every sprite. */
+    private static BufferedImage keyOutMagenta(BufferedImage src) {
+        BufferedImage out = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < src.getHeight(); y++) {
+            for (int x = 0; x < src.getWidth(); x++) {
+                int argb = src.getRGB(x, y);
+                if ((argb & 0x00FFFFFF) == 0x00FF00FF) {
+                    out.setRGB(x, y, 0);
+                } else {
+                    out.setRGB(x, y, argb | 0xFF000000);
+                }
+            }
+        }
+        return out;
+    }
 
     private void write(BufferedImage img, File dest, String name) {
         try {

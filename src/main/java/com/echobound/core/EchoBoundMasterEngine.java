@@ -72,6 +72,23 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     private float camX = 0;
     private float camY = 0;
 
+    // Screen shake — GameSettings.cameraShakeEnabled existed as a togglable setting with
+    // nothing in the live engine that ever produced any shake at all to gate (the only
+    // ScreenShake/Camera classes in the codebase belong to the unused legacy GameEngine.java).
+    // This is a minimal, self-contained implementation: a brief random camera punch on the
+    // player's own melee swing, added into camX/camY only for the duration of render() and
+    // subtracted back out immediately after, so it never perturbs the actual tracked camera
+    // position other rendering math (and the next tick's smoothing) relies on.
+    private float shakeTimer = 0f;
+    private float shakeMagnitude = 0f;
+    private final java.util.Random shakeRandom = new java.util.Random();
+
+    private void triggerShake(float magnitude, float duration) {
+        if (!settingsManager.getSettings().cameraShakeEnabled) return;
+        shakeMagnitude = magnitude;
+        shakeTimer = duration;
+    }
+
     // Keys state
     private final boolean[] keys = new boolean[512];
     private boolean jumpJustPressed = false;
@@ -90,6 +107,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         this.ctx = new UnifiedGameContext();
         this.saveManager = new SaveManager();
         this.settingsManager = new SettingsManager();
+        // A saved masterVolume from a previous session was loaded into GameSettings above,
+        // but nothing ever pushed it into the live SoundEngine — every launch silently reset
+        // to full volume regardless of what was saved. Apply once here at startup.
+        settingsManager.applySettings(ctx.soundEngine);
+        ctx.particleFXManager.setActiveLimit(settingsManager.getSettings().resolutionProfile.maxParticles);
         this.menuController = new TitleMenuController(saveManager, settingsManager);
         this.windowManager = new WindowManager();
         this.assetManager = new AssetManager();
@@ -170,6 +192,10 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
     private void tick(float dt) {
         GameState state = menuController.getCurrentState();
+
+        if (shakeTimer > 0f) {
+            shakeTimer = Math.max(0f, shakeTimer - dt);
+        }
 
         if (showAnimationViewer) {
             animationViewerOverlay.update(dt);
@@ -277,6 +303,17 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         // between two different leftover images every other frame. That reads as flicker.
         g.setColor(new Color(10, 14, 24));
         g.fillRect(0, 0, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
+
+        // Apply screen shake for this frame only — camX/camY are restored to their true
+        // smoothed value at the end of this method so the next tick's camera tracking math
+        // is never thrown off by it.
+        float shakeAppliedX = 0f, shakeAppliedY = 0f;
+        if (shakeTimer > 0f) {
+            shakeAppliedX = (shakeRandom.nextFloat() * 2f - 1f) * shakeMagnitude;
+            shakeAppliedY = (shakeRandom.nextFloat() * 2f - 1f) * shakeMagnitude;
+            camX += shakeAppliedX;
+            camY += shakeAppliedY;
+        }
 
         // 1. Render Voxel World & Traversal with Layered Equipment & Animated Weapon
         renderer.render(g, ctx.world, ctx.player, echo, ctx.dayNightCycle,
@@ -409,11 +446,17 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         if (showAnimationViewer) {
             animationViewerOverlay.render(g, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
         }
-        if (showPerformanceHUD) {
+        // showPerformanceHUD (F10, session-only) and the persisted "Debug Info" Options-menu
+        // setting used to be two entirely disconnected flags — toggling the menu option had
+        // no effect on this overlay at all. Either one now shows it.
+        if (showPerformanceHUD || settingsManager.getSettings().showDebugOverlay) {
             PerformanceDebugOverlay.render(g, ctx, assetManager, currentFps,
                                            lastFrameTimeMs, lastPhysicsTimeMs, lastRenderTimeMs,
                                            Window.INTERNAL_WIDTH);
         }
+
+        camX -= shakeAppliedX;
+        camY -= shakeAppliedY;
 
         window.present();
     }
@@ -633,8 +676,18 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         if (state == GameState.TITLE_MENU || state == GameState.OPTIONS_MENU || state == GameState.SAVE_SELECT_MENU) {
             if (code == KeyEvent.VK_UP) menuController.moveCursorUp();
             if (code == KeyEvent.VK_DOWN) menuController.moveCursorDown();
-            if (code == KeyEvent.VK_LEFT) menuController.adjustOptionLeft();
-            if (code == KeyEvent.VK_RIGHT) menuController.adjustOptionRight();
+            if (code == KeyEvent.VK_LEFT) {
+                menuController.adjustOptionLeft();
+                settingsManager.applySettings(ctx.soundEngine);
+                ctx.particleFXManager.setActiveLimit(settingsManager.getSettings().resolutionProfile.maxParticles);
+                settingsManager.save();
+            }
+            if (code == KeyEvent.VK_RIGHT) {
+                menuController.adjustOptionRight();
+                settingsManager.applySettings(ctx.soundEngine);
+                ctx.particleFXManager.setActiveLimit(settingsManager.getSettings().resolutionProfile.maxParticles);
+                settingsManager.save();
+            }
             if (code == KeyEvent.VK_ENTER || code == KeyEvent.VK_SPACE) {
                 boolean valid = menuController.selectCurrent();
                 if (menuController.isExitRequested()) {
@@ -801,6 +854,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         );
         ctx.attackWithWeapon(ctx.activeWeapon, attackCenter);
         renderer.getRinAnimController().triggerAction(AnimationState.ATTACK);
+        triggerShake(1.5f, 0.12f);
     }
     @Override
     public void mouseReleased(MouseEvent e) {

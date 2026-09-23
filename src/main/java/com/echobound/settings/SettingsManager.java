@@ -71,6 +71,7 @@ public class SettingsManager {
     public void applySettings(SoundEngine soundEngine) {
         if (soundEngine != null) {
             soundEngine.setMasterVolume(settings.masterVolume);
+            soundEngine.setMusicVolume(settings.masterVolume);
             soundEngine.setSoundEnabled(settings.masterVolume > 0.001f);
         }
     }

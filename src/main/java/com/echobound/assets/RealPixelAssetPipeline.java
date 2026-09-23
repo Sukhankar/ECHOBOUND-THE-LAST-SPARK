@@ -97,64 +97,67 @@ public class RealPixelAssetPipeline {
 
     // ── Step 1: Rin / Player Character sheet (256×320) ───────────────────────
 
+    /**
+     * Source is the CC0 "Hero Spritesheets (Ars Notoria)" pack (opengameart.org/content/
+     * hero-spritesheets-ars-notoria, by Balmer): a single 368×200 sheet, 46×50 frames on an
+     * 8×4 grid, genuine 16-bit pixel art (DB32 palette). Confirmed visually off a labeled
+     * contact sheet, not guessed: row 0 = stand/lunge-punch, row 1 = airborne punch, row 2 =
+     * knockdown/low-punch, row 3 = an 8-frame run cycle. The base character has no sword drawn
+     * in — it's a bare-fisted fighter — so ATTACK/MINE/CAST reuse its real punch/lunge frames
+     * rather than a weapon swing; combat damage is unaffected, only the on-screen animation.
+     * As with buildMobSheet()/the ninja-based rin_sheet before it, real frames are
+     * repeated/reordered (never invented) to fill the richer row layout
+     * AssetManager.createRinAnimationController() expects.
+     */
+    private static final int HERO_FRAME_W = 46;
+    private static final int HERO_FRAME_H = 50;
+
     private void buildRinSheet() {
-        File ninjaDir = new File(externalDir, "characters/ninja_frames");
-        if (!ninjaDir.isDirectory()) {
-            log("[SKIP] rin_sheet — ninja_frames directory not found");
+        File src = new File(externalDir, "characters/hero_sheet.png");
+        if (!src.exists()) {
+            log("[SKIP] rin_sheet — hero_sheet.png not found");
             return;
         }
+        try {
+            BufferedImage source = ImageIO.read(src);
+            if (source == null) { log("[FAIL] rin_sheet — unreadable"); return; }
 
-        // Expected frame names for each animation row
-        String[][] frameSets = {
-            // Row 0: IDLE  (4 frames)
-            {"idle_0.png","idle_1.png","idle_2.png","idle_3.png",null,null,null,null},
-            // Row 1: WALK  (6 frames, reuse idle + run)
-            {"idle_0.png","run_0.png","idle_1.png","run_1.png","idle_2.png","run_2.png",null,null},
-            // Row 2: RUN   (6 frames → padded to 8)
-            {"run_0.png","run_1.png","run_2.png","run_3.png","run_4.png","run_5.png","run_0.png","run_1.png"},
-            // Row 3: JUMP/FALL/DJUMP (use jump frames)
-            {"jump_0.png","jump_1.png","jump_2.png","jump_3.png","jump_0.png","jump_1.png","jump_2.png","jump_3.png"},
-            // Row 4: DASH  (4 frames → use run fast)
-            {"run_2.png","run_3.png","run_4.png","run_5.png",null,null,null,null},
-            // Row 5: GLIDE (4 frames → use swim)
-            {"swim_0.png","swim_1.png","swim_2.png","swim_3.png",null,null,null,null},
-            // Row 6: ATTACK (3 frames → use attack)
-            {"attack_0.png","attack_1.png","attack_2.png","attack_0.png","attack_1.png","attack_2.png",null,null},
-            // Row 7: MINE  (4 frames → use x frames)
-            {"x_0.png","x_1.png","x_2.png","x_3.png",null,null,null,null},
-            // Row 8: CAST  (6 frames → swim + x mix)
-            {"swim_4.png","swim_5.png","x_0.png","x_1.png","x_2.png","x_3.png",null,null},
-            // Row 9: HURT/DEAD (use x + jump reversed)
-            {"x_0.png","x_1.png","x_2.png","jump_3.png","jump_2.png","jump_1.png","jump_0.png",null}
-        };
+            // Per destination row: source (col, row) pairs into the 8×4 hero grid.
+            int[][][] frameSets = {
+                { {0,0}, {0,0}, {0,0}, {0,0} },                                   // 0 IDLE (4) — static stand pose
+                { {0,3}, {1,3}, {2,3}, {3,3}, {4,3}, {5,3} },                     // 1 WALK (6) — first 6 of the run cycle
+                { {0,3}, {1,3}, {2,3}, {3,3}, {4,3}, {5,3}, {6,3}, {7,3} },       // 2 RUN (8) — full real run cycle
+                { {1,1}, {2,1}, {3,1},                                            // 3 JUMP(0-2) — crouch → airborne
+                  {4,1}, {5,1},                                                    //   FALL(3-4) — descending
+                  {6,0}, {7,0}, {2,1} },                                          //   DJUMP(5-7) — leg-raised sprint reuse
+                { {1,3}, {3,3}, {5,3}, {7,3} },                                   // 4 DASH (4) — alternating run frames
+                { {0,2}, {1,2}, {0,1}, {0,2} },                                   // 5 GLIDE (4) — spread-limb falling poses
+                { {2,0}, {3,0}, {4,0}, {5,0}, {4,0}, {2,0} },                     // 6 ATTACK (6) — real punch/lunge sequence
+                { {2,2}, {3,2}, {4,2}, {5,2} },                                   // 7 MINE (4) — low punch/lunge variant
+                { {2,1}, {3,1}, {4,1}, {5,1}, {3,1}, {2,1} },                     // 8 CAST (6) — airborne punch, raised-arm feel
+                { {0,2}, {1,2}, {0,2},                                            // 9 HURT(0-2) — knockdown hit poses
+                  {1,2}, {1,2}, {1,2}, {1,2}, {1,2} },                            //   DEAD(3-7) — lying-down pose held
+            };
 
-        BufferedImage sheet = new BufferedImage(
-            RIN_SHEET_COLS * CHAR_FRAME_W, RIN_SHEET_ROWS * CHAR_FRAME_H, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = sheet.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            BufferedImage sheet = new BufferedImage(
+                RIN_SHEET_COLS * CHAR_FRAME_W, RIN_SHEET_ROWS * CHAR_FRAME_H, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = sheet.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-        boolean anyFrame = false;
-        for (int row = 0; row < RIN_SHEET_ROWS; row++) {
-            String[] frames = frameSets[row];
-            for (int col = 0; col < RIN_SHEET_COLS; col++) {
-                if (frames[col] == null) continue;
-                File f = new File(ninjaDir, frames[col]);
-                if (!f.exists()) continue;
-                try {
-                    BufferedImage src = ImageIO.read(f);
-                    if (src != null) {
-                        g.drawImage(src, col * CHAR_FRAME_W, row * CHAR_FRAME_H, CHAR_FRAME_W, CHAR_FRAME_H, null);
-                        anyFrame = true;
-                    }
-                } catch (IOException ignored) {}
+            for (int row = 0; row < frameSets.length; row++) {
+                int[][] frames = frameSets[row];
+                for (int col = 0; col < frames.length; col++) {
+                    int srcCol = frames[col][0];
+                    int srcRow = frames[col][1];
+                    BufferedImage tile = source.getSubimage(
+                        srcCol * HERO_FRAME_W, srcRow * HERO_FRAME_H, HERO_FRAME_W, HERO_FRAME_H);
+                    g.drawImage(tile, col * CHAR_FRAME_W, row * CHAR_FRAME_H, CHAR_FRAME_W, CHAR_FRAME_H, null);
+                }
             }
-        }
-        g.dispose();
-
-        if (anyFrame) {
+            g.dispose();
             write(sheet, new File(processedDir, "characters/rin_sheet.png"), "rin_sheet");
-        } else {
-            log("[SKIP] rin_sheet — no ninja frames could be loaded");
+        } catch (IOException e) {
+            log("[FAIL] rin_sheet — " + e.getMessage());
         }
     }
 

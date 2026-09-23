@@ -490,9 +490,12 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             if (sx < -80 || sx > Window.INTERNAL_WIDTH + 80 || sy < -80 || sy > Window.INTERNAL_HEIGHT + 80) continue;
 
             int w = sprite.getWidth(), h = sprite.getHeight();
-            // Ground shadow, anchored at the sprite's base (feet of the walls, not its center).
+            // Ground shadow, anchored at the sprite's actual base. The sprite is drawn from
+            // (sy - h) to sy below — sy IS its bottom edge — but this used sy + h/2, roughly
+            // half the house's own height further down, leaving a visible gap between the
+            // building and its shadow that read as the house floating above the ground.
             g.setColor(new Color(0, 0, 0, 70));
-            g.fillOval(sx - w / 3, sy + h / 2 - 4, (w * 2) / 3, 8);
+            g.fillOval(sx - w / 3, sy - 4, (w * 2) / 3, 8);
 
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
@@ -761,8 +764,32 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             menuController.skipCinematic();
             return;
         }
-        if (e.getButton() == MouseEvent.BUTTON1) leftClickHeld = true;
+        if (e.getButton() == MouseEvent.BUTTON1) {
+            leftClickHeld = true;
+            // Melee attack — UnifiedGameContext.attackWithWeapon() existed but was never
+            // called from anywhere in the live game (same pattern as mining/taming/shops
+            // before this session): no key or click triggered it, so there was no way to
+            // actually attack a mob at all. Fires once per click, separate from the
+            // continuous hold-based mining that also reads leftClickHeld in
+            // PlayerSandboxEntity.update — a click both mines whatever's targeted ahead and
+            // swings at whatever's standing there, which is the usual feel for this genre.
+            if (menuController.getCurrentState() == GameState.PLAYING
+                    && !windowManager.hasActiveWindow() && activeDialogueNPC == null) {
+                performMeleeAttack();
+            }
+        }
         if (e.getButton() == MouseEvent.BUTTON3) rightClickJustPressed = true;
+    }
+
+    private void performMeleeAttack() {
+        float reach = 26.0f;
+        Vec3 attackCenter = new Vec3(
+            ctx.player.pos.x + ctx.player.facingDirX * reach,
+            ctx.player.pos.y + ctx.player.facingDirY * reach,
+            ctx.player.pos.z + 8.0f
+        );
+        ctx.attackWithWeapon(ctx.activeWeapon, attackCenter);
+        renderer.getRinAnimController().triggerAction(AnimationState.ATTACK);
     }
     @Override
     public void mouseReleased(MouseEvent e) {

@@ -334,9 +334,13 @@ public class UnifiedGameContext {
             damage = (int) (damage * petManager.getFireDamageMultiplier());
         }
 
+        // Was +/-1.5 xy, +/-1-2 z — the same stale small-unit scale MobEntity's hitbox used
+        // to be (see the comment there). A melee swing that size could essentially never
+        // overlap a mob's real, pixel-scale hitbox; nothing in the live game ever called this
+        // method at all, so the mismatch went unnoticed until wiring an actual attack input.
         AABB3D attackArea = new AABB3D(
-            attackCenter.x - 1.5f, attackCenter.y - 1.5f, attackCenter.z - 1.0f,
-            attackCenter.x + 1.5f, attackCenter.y + 1.5f, attackCenter.z + 2.0f
+            attackCenter.x - 22.0f, attackCenter.y - 22.0f, attackCenter.z - 16.0f,
+            attackCenter.x + 22.0f, attackCenter.y + 22.0f, attackCenter.z + 24.0f
         );
         mobManager.applyDamageArea(attackArea, damage, player.getPosition(), playerInventory);
         soundEngine.play(SoundType.MINE_BLOCK);

@@ -1,5 +1,6 @@
 package com.echobound.assets;
 
+import com.echobound.entity.mob.MobType;
 import com.echobound.sandbox.BlockType;
 
 import javax.imageio.ImageIO;
@@ -36,8 +37,9 @@ public class RealPixelAssetPipeline {
     private static final int WEAPON_H       = 24;
     private static final int NPC_FRAME_W    = 32;
     private static final int NPC_FRAME_H    = 32;
-    private static final int MOB_FRAME_W    = 16;
-    private static final int MOB_FRAME_H    = 16;
+    // Must match AssetManager.createMobAnimationController()'s SpriteSheet(sheetImg, 32, 32).
+    private static final int MOB_FRAME_W    = 32;
+    private static final int MOB_FRAME_H    = 32;
 
     // Animation row mapping for rin_sheet (rows 0-9, 8 cols wide = 256×320)
     // Row 0 = IDLE (4 frames), Row 1 = WALK (6), Row 2 = RUN (8),
@@ -212,76 +214,122 @@ public class RealPixelAssetPipeline {
         }
     }
 
-    // ── Step 3: Mob Sheet from Kenney tiny dungeon (128×384) ─────────────────
+    // ── Step 3: Mob Sheet from the CC0 "Tiny Creatures" pack (128×N) ─────────
+
+    /**
+     * Source is the CC0, Kenney-collaborated "Tiny Creatures" pack (opengameart.org/content/
+     * tiny-creatures): a single 160×288 tilemap, 16×16 tiles on a tight 10×18 grid, no margin
+     * (see Tilesheet.txt in the pack). Coordinates were picked by hand off a rendered, labeled
+     * contact sheet of the actual grid (col,row) — each one visually confirmed to be a real
+     * creature art match for its MobType, not a guess. The pack ships one pose per creature
+     * (no separate walk/attack/death frames), so WALK/ATTACK/DEAD are synthesized from the
+     * single real base sprite via flip/offset/tint — the same technique the old fully-
+     * procedural generateMobsSheet() used for its rounded-rectangle placeholders, just now
+     * driven by real pixel art instead of a flat-fill shape.
+     */
+    private static final int CREATURE_TILE = 16;
+
+    private static int[] mobSourceTile(MobType type) {
+        return switch (type) {
+            case CORRUPTED_DRONE      -> new int[]{8, 1};  // armored robot/knight figure
+            case SHADOW_CREEPER       -> new int[]{4, 0};  // dark hooded shadow figure
+            case MAGMA_GOLEM          -> new int[]{5, 4};  // orange fire elemental
+            case VOID_STALKER         -> new int[]{7, 12}; // gray golem, tinted dark purple
+            case WOODLAND_FOX         -> new int[]{8, 16}; // orange fox
+            case CAVE_GLOWBAT         -> new int[]{6, 13}; // gray bat
+            case EMBER_CAT            -> new int[]{6, 15}; // orange lion (feline, fire-colored)
+            case MOSS_TURTLE_CREATURE -> new int[]{9, 14}; // green turtle
+            case SKY_CLOUDBIRD        -> new int[]{7, 11}; // gray owl, tinted sky-blue
+            case FIELD_RAT            -> new int[]{4, 13}; // small brown rabbit/critter
+            case MARSH_BEETLE         -> new int[]{5, 14}; // orange scorpion, tinted green
+            case DRAGON               -> new int[]{3, 3};  // red winged dragon
+            case PHOENIX_CREATURE     -> new int[]{3, 10}; // fire-colored bird, tinted warmer
+            case UNICORN_CREATURE     -> new int[]{1, 5};  // white horned unicorn
+        };
+    }
+
+    private static Color mobRealTint(MobType type) {
+        return switch (type) {
+            case CORRUPTED_DRONE  -> new Color(120, 190, 255, 55);
+            case VOID_STALKER     -> new Color(90, 20, 140, 80);
+            case SKY_CLOUDBIRD    -> new Color(150, 205, 255, 60);
+            case MARSH_BEETLE     -> new Color(60, 150, 60, 70);
+            case PHOENIX_CREATURE -> new Color(255, 110, 20, 55);
+            default               -> null;
+        };
+    }
 
     private void buildMobSheet() {
-        File src = new File(externalDir, "mobs/kenney_tiny_dungeon_tiles.png");
+        File src = new File(externalDir, "mobs/tiny_creatures.png");
         if (!src.exists()) {
-            log("[SKIP] mobs_sheet — kenney_tiny_dungeon_tiles.png not found");
+            log("[SKIP] mobs_sheet — tiny_creatures.png not found");
             return;
         }
         try {
             BufferedImage source = ImageIO.read(src);
             if (source == null) { log("[FAIL] mobs_sheet — unreadable"); return; }
+            int srcCols = source.getWidth() / CREATURE_TILE;
+            int srcRows = source.getHeight() / CREATURE_TILE;
 
-            // Kenney tiny dungeon: 16×16 sprites, many different tiles
-            int srcTileW = 16, srcTileH = 16;
-            int srcCols  = source.getWidth()  / srcTileW;
-            int srcRows  = source.getHeight() / srcTileH;
-
-            // 4 mobs × 3 animation-rows (IDLE, ATTACK, DEAD) × 4 frames
-            // Use different rows of the dungeon sheet for each mob
-            BufferedImage mobSheet = new BufferedImage(128, 384, BufferedImage.TYPE_INT_ARGB);
+            MobType[] types = MobType.values();
+            int rowsPerMob = 4; // IDLE, WALK, ATTACK, DEAD — see AssetManager.createMobAnimationController()
+            BufferedImage mobSheet = new BufferedImage(
+                4 * MOB_FRAME_W, types.length * rowsPerMob * MOB_FRAME_H, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = mobSheet.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-            // Pick representative source rows for each mob archetype
-            int[] mobSourceRows = {0, 1, 2, 3}; // rows in the dungeon tileset
-            Color[] mobTints = {
-                new Color(255, 80, 80, 0),   // Drone   — red tint  (0 = no tint)
-                new Color(140, 60, 200, 40),  // Creeper — purple tint
-                new Color(255, 140, 20, 60),  // Golem   — orange tint
-                new Color(60, 20, 120, 80)    // Stalker — dark purple tint
-            };
+            for (int m = 0; m < types.length; m++) {
+                int[] rc = mobSourceTile(types[m]);
+                int col = Math.min(rc[0], srcCols - 1);
+                int row = Math.min(rc[1], srcRows - 1);
+                BufferedImage base = source.getSubimage(
+                    col * CREATURE_TILE, row * CREATURE_TILE, CREATURE_TILE, CREATURE_TILE);
+                Color tint = mobRealTint(types[m]);
 
-            for (int mob = 0; mob < 4; mob++) {
-                int srcRow = mobSourceRows[mob] < srcRows ? mobSourceRows[mob] : 0;
-                for (int animRow = 0; animRow < 3; animRow++) { // IDLE, ATTACK, DEAD
-                    for (int frame = 0; frame < 4; frame++) {
-                        int srcCol = Math.min(frame, srcCols - 1);
-                        BufferedImage srcTile = source.getSubimage(
-                            srcCol * srcTileW, srcRow * srcTileH,
-                            srcTileW, srcTileH);
-
-                        int destX = frame * MOB_FRAME_W;
-                        int destY = (mob * 3 + animRow) * MOB_FRAME_H;
-
-                        // Scale 16→16 (no scaling needed for mob sheet)
-                        g.drawImage(srcTile, destX, destY, MOB_FRAME_W, MOB_FRAME_H, null);
-
-                        // Apply mob-specific tint
-                        if (mobTints[mob].getAlpha() > 0) {
-                            g.setColor(mobTints[mob]);
-                            g.fillRect(destX, destY, MOB_FRAME_W, MOB_FRAME_H);
-                        }
-
-                        // ATTACK row: add red glow overlay
-                        if (animRow == 1) {
-                            g.setColor(new Color(255, 0, 0, 30));
-                            g.fillRect(destX, destY, MOB_FRAME_W, MOB_FRAME_H);
-                        }
-                        // DEAD row: grey-fade overlay
-                        if (animRow == 2) {
-                            g.setColor(new Color(180, 180, 180, 120));
-                            g.fillRect(destX, destY, MOB_FRAME_W, MOB_FRAME_H);
-                        }
-                    }
+                for (int frame = 0; frame < 4; frame++) {
+                    // IDLE: static real sprite, no distortion.
+                    drawMobFrame(g, base, frame, m * rowsPerMob, tint, false, false, 0);
+                    // WALK: alternating horizontal flip + vertical bob simulates a stride
+                    // from a single source pose.
+                    drawMobFrame(g, base, frame, m * rowsPerMob + 1, tint, frame % 2 == 1, false,
+                                 frame % 2 == 0 ? 0 : 2);
+                    // ATTACK: drawn slightly larger (lunging forward) with a red flash overlay.
+                    drawMobFrame(g, base, frame, m * rowsPerMob + 2, tint, false, false, -2);
+                    Color attackFlash = new Color(255, 0, 0, 40);
+                    int ay = (m * rowsPerMob + 2) * MOB_FRAME_H;
+                    g.setColor(attackFlash);
+                    g.fillRect(frame * MOB_FRAME_W, ay, MOB_FRAME_W, MOB_FRAME_H);
+                    // DEAD: flipped upside-down (fallen) with a grey desaturating overlay.
+                    drawMobFrame(g, base, frame, m * rowsPerMob + 3, tint, false, true, 6);
+                    Color deadFade = new Color(160, 160, 160, 130);
+                    int dy = (m * rowsPerMob + 3) * MOB_FRAME_H;
+                    g.setColor(deadFade);
+                    g.fillRect(frame * MOB_FRAME_W, dy, MOB_FRAME_W, MOB_FRAME_H);
                 }
             }
             g.dispose();
             write(mobSheet, new File(processedDir, "mobs/mobs_sheet.png"), "mobs_sheet");
         } catch (IOException e) {
             log("[FAIL] mobs_sheet — " + e.getMessage());
+        }
+    }
+
+    /** Draws one real-art mob frame into the sheet, applying an optional tint wash and
+     *  flip/offset used to synthesize WALK/ATTACK/DEAD from the pack's single base pose. */
+    private void drawMobFrame(Graphics2D g, BufferedImage base, int frame, int destRow,
+                               Color tint, boolean flipH, boolean flipV, int yOffset) {
+        int destX = frame * MOB_FRAME_W;
+        int cellY = destRow * MOB_FRAME_H;
+        int destY = cellY + yOffset;
+        int sx1 = flipH ? CREATURE_TILE : 0;
+        int sx2 = flipH ? 0 : CREATURE_TILE;
+        int sy1 = flipV ? CREATURE_TILE : 0;
+        int sy2 = flipV ? 0 : CREATURE_TILE;
+        g.drawImage(base, destX, destY, destX + MOB_FRAME_W, destY + MOB_FRAME_H,
+                    sx1, sy1, sx2, sy2, null);
+        if (tint != null) {
+            g.setColor(tint);
+            g.fillRect(destX, cellY, MOB_FRAME_W, MOB_FRAME_H);
         }
     }
 

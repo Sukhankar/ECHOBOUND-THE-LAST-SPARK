@@ -5,5 +5,6 @@ public enum InGameWindowType {
     INVENTORY_EQUIPMENT,
     CRAFTING,
     QUEST_LOG,
-    TUTORIAL_CONTROLS
+    TUTORIAL_CONTROLS,
+    SHOP
 }

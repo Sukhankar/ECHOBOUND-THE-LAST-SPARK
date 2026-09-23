@@ -31,6 +31,15 @@ public class DayNightCycle {
         return dayCount;
     }
 
+    /** Days per season — a 4-season, 28-day year built on the existing dayCount. */
+    private static final int SEASON_LENGTH_DAYS = 7;
+
+    public Season getSeason() {
+        Season[] seasons = Season.values();
+        int index = ((dayCount - 1) / SEASON_LENGTH_DAYS) % seasons.length;
+        return seasons[index];
+    }
+
     public WeatherType getWeather() {
         return weather;
     }
@@ -77,5 +86,9 @@ public class DayNightCycle {
         int minutes = (int) ((timeOfDay - hours) * 60);
         return String.format("Day %d | %02d:%02d (%s)", dayCount, hours, minutes,
                              isNight() ? "Night" : "Day");
+    }
+
+    public String getFormattedDate() {
+        return "Day " + dayCount + " — " + getSeason().displayName;
     }
 }

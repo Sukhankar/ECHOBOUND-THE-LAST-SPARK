@@ -43,7 +43,33 @@ public enum BlockType {
         new Color(150, 98, 55), new Color(98, 62, 34), new Color(255, 195, 75)),
 
     BARRICADE(13, "Defensive Barricade", true, true, 0, 2.0f, "BARRICADE",
-        new Color(140, 70, 40), new Color(90, 42, 24), new Color(190, 105, 60));
+        new Color(140, 70, 40), new Color(90, 42, 24), new Color(190, 105, 60)),
+
+    // ── World/Environment expansion: biome surfaces, vegetation, structures ──
+
+    SAND(14, "Sunbaked Sand", true, false, 0, 0.35f, "SAND",
+        new Color(215, 190, 130), new Color(175, 150, 95), new Color(235, 215, 165)),
+
+    SNOW(15, "Packed Snow", true, false, 0, 0.35f, "SNOW",
+        new Color(225, 235, 245), new Color(185, 200, 215), new Color(255, 255, 255)),
+
+    TALL_GRASS(16, "Tall Grass", false, true, 0, 0.1f, "PLANT_FIBER",
+        new Color(70, 150, 65, 235), new Color(45, 105, 45, 235), new Color(100, 190, 90, 235)),
+
+    WILDFLOWER(17, "Wildflower", false, true, 0, 0.1f, "WILDFLOWER",
+        new Color(90, 160, 70, 235), new Color(60, 115, 50, 235), new Color(230, 120, 160, 235)),
+
+    BERRY_BUSH(18, "Berry Bush", true, true, 0, 0.6f, "WILD_BERRIES",
+        new Color(55, 120, 60), new Color(32, 82, 40), new Color(200, 50, 70)),
+
+    BOULDER(19, "Weathered Boulder", true, false, 0, 1.6f, "STONE",
+        new Color(120, 118, 112), new Color(80, 78, 74), new Color(160, 158, 150)),
+
+    CACTUS(20, "Spineback Cactus", true, false, 0, 0.9f, "CACTUS_FIBER",
+        new Color(60, 130, 80), new Color(38, 92, 55), new Color(95, 175, 115)),
+
+    RUINS_BRICK(21, "Ancient Ruins Brick", true, false, 0, 1.5f, "ANCIENT_RUBBLE",
+        new Color(95, 90, 80), new Color(62, 58, 50), new Color(140, 132, 118));
 
     public final int id;
     public final String displayName;

@@ -175,8 +175,8 @@ public class Part13RealPixelAssetsVerification {
             }
         });
 
-        // Test 14: Mob animation controller all types
-        test("Mob AnimationController works for all 4 MobTypes", () -> {
+        // Test 14: Mob animation controller for the original 4 hostile archetypes
+        test("Mob AnimationController works for the 4 original hostile MobTypes", () -> {
             MobType[] types = {
                 MobType.CORRUPTED_DRONE, MobType.SHADOW_CREEPER,
                 MobType.MAGMA_GOLEM, MobType.VOID_STALKER

@@ -1,6 +1,7 @@
 package com.echobound.fx;
 
 import com.echobound.magic.MagicSchool;
+import com.echobound.sandbox.WeatherType;
 
 import java.awt.*;
 import java.util.Random;
@@ -9,6 +10,7 @@ public class ParticleFXManager {
     public static final int MAX_PARTICLES = 256;
     private final PixelParticle[] pool = new PixelParticle[MAX_PARTICLES];
     private final Random random = new Random(42);
+    private float weatherSpawnAccumulator = 0.0f;
 
     public ParticleFXManager() {
         for (int i = 0; i < MAX_PARTICLES; i++) {
@@ -65,6 +67,52 @@ public class ParticleFXManager {
 
     public void spawnLootSparkles(float x, float y, float z) {
         spawnBurst(x, y, z, new Color(255, 220, 60), 16, 75.0f);
+    }
+
+    /**
+     * Ambient weather previously only dimmed the screen (see DayNightCycle.brightnessMult) —
+     * it had no actual visible precipitation. This spawns real falling particles around the
+     * player using the same pool/physics every other effect in this class already uses, so
+     * rain/storm/snow finally read as weather instead of just a lighting multiplier.
+     */
+    public void updateWeather(float dt, float centerX, float centerY, WeatherType weather) {
+        boolean rain = (weather == WeatherType.RAIN || weather == WeatherType.STORM);
+        boolean snow = (weather == WeatherType.SNOW);
+        if (!rain && !snow) {
+            weatherSpawnAccumulator = 0.0f;
+            return;
+        }
+
+        float spawnInterval = (weather == WeatherType.STORM) ? 0.012f : (rain ? 0.028f : 0.05f);
+        weatherSpawnAccumulator += dt;
+        int guard = 0;
+        while (weatherSpawnAccumulator >= spawnInterval && guard++ < 40) {
+            weatherSpawnAccumulator -= spawnInterval;
+            float ox = centerX + (random.nextFloat() - 0.5f) * 380.0f;
+            float oy = centerY + (random.nextFloat() - 0.5f) * 240.0f;
+            if (rain) {
+                spawnRaindrop(ox, oy, weather == WeatherType.STORM);
+            } else {
+                spawnSnowflake(ox, oy);
+            }
+        }
+    }
+
+    // Fall height (z=130) and each gravity/life pair are tuned so z reaches ~0 (ground) right
+    // around maxLife — z(t) = z0 + 0.5*gravity*t^2 with vz0=0 — instead of the particle fading
+    // out mid-air or sinking visibly below the ground line before it expires.
+    private void spawnRaindrop(float x, float y, boolean storm) {
+        PixelParticle p = findFreeParticle();
+        float vx = storm ? -60.0f : -25.0f;
+        p.spawn(x, y, 130.0f, vx, 0.0f, 0.0f,
+                new Color(150, 190, 255, 190), 1, storm ? 0.53f : 0.62f, storm ? -950.0f : -700.0f);
+    }
+
+    private void spawnSnowflake(float x, float y) {
+        PixelParticle p = findFreeParticle();
+        float vx = (random.nextFloat() - 0.5f) * 14.0f;
+        p.spawn(x, y, 130.0f, vx, 0.0f, 0.0f,
+                new Color(255, 255, 255, 220), 1, 2.15f, -55.0f);
     }
 
     public void update(float dt) {

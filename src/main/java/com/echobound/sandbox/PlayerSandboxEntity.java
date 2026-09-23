@@ -291,7 +291,4 @@ public class PlayerSandboxEntity {
         return false;
     }
 
-    public void update(float dt, SandboxWorld world) {
-        update(world, false, false, false, false, false, false, false, false, false, dt);
-    }
 }

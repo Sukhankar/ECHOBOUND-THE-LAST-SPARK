@@ -116,7 +116,7 @@ public class Part11TutorialAndAssetsVerification {
     private static void testTutorialStepProgression() {
         TutorialManager tm = new TutorialManager();
 
-        assertEquals(5, tm.getTotalSteps(), "Tutorial must comprise 5 core steps");
+        assertEquals(6, tm.getTotalSteps(), "Tutorial must comprise 6 core steps");
         assertObjectEquals(TutorialStep.MOVEMENT, tm.getCurrentStep(), "Initial step must be MOVEMENT");
         assertTrue(!tm.isAllCompleted(), "Initially not all steps should be completed");
 
@@ -134,9 +134,10 @@ public class Part11TutorialAndAssetsVerification {
         tm.completeStep(TutorialStep.CRAFTING);
         tm.completeStep(TutorialStep.MAGIC);
         tm.completeStep(TutorialStep.ECHO);
+        tm.completeStep(TutorialStep.TAMING);
 
         assertTrue(tm.isAllCompleted(), "All tutorial steps must be completed");
-        assertEquals(5, tm.getCompletedCount(), "Completed step count must be 5");
+        assertEquals(6, tm.getCompletedCount(), "Completed step count must be 6");
 
         System.out.println("  [PASS] Beginner Academy 5-Step Walkthrough Progression verified");
     }

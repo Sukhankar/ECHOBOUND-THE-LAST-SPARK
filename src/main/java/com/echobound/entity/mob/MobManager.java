@@ -54,6 +54,12 @@ public class MobManager {
         return hitCount;
     }
 
+    /** Removes a specific mob without it counting as a kill (no loot, no drops) — used when
+     *  a passive/neutral creature is tamed into a companion instead of fought. */
+    public boolean removeMob(MobEntity mob) {
+        return activeMobs.remove(mob);
+    }
+
     public int getActiveMobCount() {
         return activeMobs.size();
     }

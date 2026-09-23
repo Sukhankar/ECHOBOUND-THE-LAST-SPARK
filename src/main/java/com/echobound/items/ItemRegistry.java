@@ -45,11 +45,17 @@ public class ItemRegistry {
     public static final int MAT_SPARK_SHARD = 503;
     public static final int MAT_CRYSTAL_SHARD = 504;
     public static final int MAT_ANCIENT_CHIP = 505;
+    public static final int MAT_DRAGON_SCALE = 506;
 
     // Food & Potions (600s)
     public static final int FOOD_MUSHROOM_SOUP = 601;
     public static final int POTION_HEALTH = 602;
     public static final int POTION_SPARK = 603;
+
+    // Currency (900s) — backs the NPC shop system (see NPCDefinition.shopItems / ShopWindow).
+    // FactionManager.getStoreDiscount() has existed since Part 4 with nothing to discount;
+    // this is what actually lets a purchase happen.
+    public static final int CURRENCY_SPARK_COIN = 901;
 
     static {
         // Register Weapons
@@ -90,11 +96,15 @@ public class ItemRegistry {
         register(new ItemDefinition(MAT_SPARK_SHARD, "Spark Shard", ItemCategory.MATERIALS, 999, 5, "Crystallized fragment of the First Spark.", new Color(0, 240, 255)));
         register(new ItemDefinition(MAT_CRYSTAL_SHARD, "Resonance Crystal", ItemCategory.MATERIALS, 999, 10, "Harmonic crystal node.", new Color(220, 90, 255)));
         register(new ItemDefinition(MAT_ANCIENT_CHIP, "Ancient Chip", ItemCategory.MATERIALS, 999, 25, "Salvaged memory data wafer.", new Color(255, 180, 50)));
+        register(new ItemDefinition(MAT_DRAGON_SCALE, "Dragon Scale", ItemCategory.MATERIALS, 999, 80, "Iridescent scale shed by a legendary dragon.", new Color(200, 40, 60)));
 
         // Register Food & Potions
         register(new ItemDefinition(FOOD_MUSHROOM_SOUP, "Mushroom Soup", ItemCategory.FOOD, 16, 12, "Regenerates 2 hearts over 8 seconds.", new Color(180, 140, 90)));
         register(new ItemDefinition(POTION_HEALTH, "Health Elixir", ItemCategory.POTIONS, 16, 20, "Instantly restores 4 hearts.", new Color(230, 40, 60)));
         register(new ItemDefinition(POTION_SPARK, "Spark Tonic", ItemCategory.POTIONS, 16, 25, "Restores 50 Spark Energy.", new Color(0, 220, 255)));
+
+        // Register Currency
+        register(new ItemDefinition(CURRENCY_SPARK_COIN, "Spark Coin", ItemCategory.CURRENCY, 999, 1, "Minted Spark residue, accepted by every faction's traders.", new Color(255, 215, 0)));
     }
 
     private static void register(ItemDefinition item) {

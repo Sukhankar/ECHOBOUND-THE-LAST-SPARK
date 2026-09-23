@@ -10,19 +10,31 @@ public class Window {
 
     private final JFrame frame;
     private final GamePanel panel;
-    private final BufferedImage backBuffer;
-    private final Graphics2D bufferGraphics;
+
+    // Two off-screen buffers ping-ponged between the game thread (which renders into
+    // whichever one is currently "back") and the Swing EDT (which only ever paints
+    // whichever one was last fully finished — "front"). Previously there was a single
+    // shared BufferedImage: the game thread kept mutating it via bufferGraphics while the
+    // EDT concurrently read the very same object in paintComponent, with no synchronization
+    // at all. That's a data race — the EDT could paint a half-drawn frame (blocks drawn,
+    // player/HUD not yet) or torn pixel data, which is exactly what shows up on screen as
+    // flickering. frontBuffer is volatile so a completed frame is safely published to the
+    // EDT with a single reference write/read, without needing a lock on the hot render path.
+    private final BufferedImage bufferA;
+    private final BufferedImage bufferB;
+    private BufferedImage backBuffer;
+    private volatile BufferedImage frontBuffer;
+    private Graphics2D bufferGraphics;
 
     private boolean isFullscreen = false;
     private Rectangle windowedBounds;
 
     public Window(String title, Input input) {
-        backBuffer = new BufferedImage(INTERNAL_WIDTH, INTERNAL_HEIGHT, BufferedImage.TYPE_INT_RGB);
-        bufferGraphics = backBuffer.createGraphics();
-
-        // Default high quality render hints for the buffer
-        bufferGraphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        bufferGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        bufferA = new BufferedImage(INTERNAL_WIDTH, INTERNAL_HEIGHT, BufferedImage.TYPE_INT_RGB);
+        bufferB = new BufferedImage(INTERNAL_WIDTH, INTERNAL_HEIGHT, BufferedImage.TYPE_INT_RGB);
+        backBuffer = bufferA;
+        frontBuffer = bufferB; // arbitrary until the first present(); both start blank
+        bufferGraphics = createGraphicsFor(backBuffer);
 
         frame = new JFrame(title);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -71,7 +83,25 @@ public class Window {
         return bufferGraphics;
     }
 
+    private static Graphics2D createGraphicsFor(BufferedImage img) {
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        return g;
+    }
+
+    /**
+     * Called once per frame after EchoBoundMasterEngine finishes drawing into
+     * getBufferGraphics()'s buffer. Publishes that now-complete frame as frontBuffer (what
+     * paintComponent will draw) and switches backBuffer to the other image so the very next
+     * frame's drawing never touches the buffer the EDT might still be mid-paint on.
+     */
     public void present() {
+        BufferedImage justDrawn = backBuffer;
+        backBuffer = (backBuffer == bufferA) ? bufferB : bufferA;
+        bufferGraphics.dispose();
+        bufferGraphics = createGraphicsFor(backBuffer);
+        frontBuffer = justDrawn;
         panel.repaint();
     }
 
@@ -143,7 +173,11 @@ public class Window {
 
             Graphics2D g2 = (Graphics2D) g;
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-            g2.drawImage(backBuffer, drawX, drawY, drawW, drawH, null);
+            // Read frontBuffer once into a local: it's volatile and present() can swap it out
+            // from the game thread at any time, so re-reading the field mid-method could
+            // otherwise mix drawImage's internal calls across two different frames.
+            BufferedImage toDraw = frontBuffer;
+            g2.drawImage(toDraw, drawX, drawY, drawW, drawH, null);
         }
     }
 }

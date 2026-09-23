@@ -37,6 +37,7 @@ public class TitleMenuController {
     private final SaveManager saveManager;
     private final SettingsManager settingsManager;
     private final LoadingScreen loadingScreen = new LoadingScreen();
+    private final CinematicIntro cinematicIntro = new CinematicIntro();
 
     public TitleMenuController(SaveManager saveManager, SettingsManager settingsManager) {
         this.saveManager = saveManager;
@@ -47,11 +48,32 @@ public class TitleMenuController {
         if (currentState == GameState.LOADING) {
             loadingScreen.update(dt);
             if (loadingScreen.isFinished()) {
-                currentState = GameState.TITLE_MENU;
-                // Default cursor to CONTINUE if save exists, else NEW GAME
-                titleCursor = (saveManager.getMostRecentSlot() > 0) ? 0 : 1;
+                currentState = GameState.INTRO_CINEMATIC;
+            }
+        } else if (currentState == GameState.INTRO_CINEMATIC) {
+            cinematicIntro.update(dt);
+            if (cinematicIntro.isFinished()) {
+                goToTitleMenu();
             }
         }
+    }
+
+    /** Any key/click during the cinematic jumps straight to the title menu. */
+    public void skipCinematic() {
+        if (currentState == GameState.INTRO_CINEMATIC) {
+            cinematicIntro.skip();
+            goToTitleMenu();
+        }
+    }
+
+    private void goToTitleMenu() {
+        currentState = GameState.TITLE_MENU;
+        // Default cursor to CONTINUE if save exists, else NEW GAME
+        titleCursor = (saveManager.getMostRecentSlot() > 0) ? 0 : 1;
+    }
+
+    public CinematicIntro getCinematicIntro() {
+        return cinematicIntro;
     }
 
     public GameState getCurrentState() {

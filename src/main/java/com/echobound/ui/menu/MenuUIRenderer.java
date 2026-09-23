@@ -24,11 +24,67 @@ public class MenuUIRenderer {
         GameState state = controller.getCurrentState();
         switch (state) {
             case LOADING -> renderLoadingScreen(g, controller.getLoadingScreen(), width, height);
+            case INTRO_CINEMATIC -> renderCinematicIntro(g, controller.getCinematicIntro(), width, height);
             case TITLE_MENU -> renderTitleMenu(g, controller, saveManager, width, height);
             case OPTIONS_MENU -> renderOptionsMenu(g, controller, settingsManager.getSettings(), width, height);
             case SAVE_SELECT_MENU -> renderSaveSelectMenu(g, controller, saveManager, width, height);
             default -> {}
         }
+    }
+
+    private static void renderCinematicIntro(Graphics2D g, CinematicIntro cinematic, int width, int height) {
+        // BG_DARK is already filled by the caller — pure black card, one line of narration
+        // at a time, fading in/hold/out. The last line (the game's title) renders larger
+        // and in gold instead of the muted narration color, as a natural button-up.
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, width, height);
+
+        float alpha = cinematic.getCurrentLineAlpha();
+        boolean isTitleCard = cinematic.isLastLine();
+
+        Font font = new Font("Monospaced", isTitleCard ? Font.BOLD : Font.PLAIN, isTitleCard ? 20 : 13);
+        g.setFont(font);
+        String line = cinematic.getCurrentLine();
+        FontMetrics fm = g.getFontMetrics();
+
+        // Wrap long lines to fit within ~90% of the internal width instead of overflowing it.
+        java.util.List<String> wrapped = wrapText(line, fm, (int) (width * 0.85f));
+        int lineHeight = fm.getHeight() + 4;
+        int totalH = wrapped.size() * lineHeight;
+        int startY = (height - totalH) / 2 + fm.getAscent();
+
+        Color base = isTitleCard ? GOLD : new Color(210, 218, 235);
+        int a = Math.max(0, Math.min(255, (int) (alpha * 255)));
+        g.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), a));
+        for (int i = 0; i < wrapped.size(); i++) {
+            String seg = wrapped.get(i);
+            int sw = fm.stringWidth(seg);
+            g.drawString(seg, (width - sw) / 2, startY + i * lineHeight);
+        }
+
+        // Skip hint, bottom-right, always faintly visible.
+        g.setFont(new Font("Monospaced", Font.PLAIN, 9));
+        String hint = "Press any key to skip";
+        int hw = g.getFontMetrics().stringWidth(hint);
+        g.setColor(new Color(120, 128, 145, 150));
+        g.drawString(hint, width - hw - 10, height - 10);
+    }
+
+    private static java.util.List<String> wrapText(String text, FontMetrics fm, int maxWidth) {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        String[] words = text.split(" ");
+        StringBuilder current = new StringBuilder();
+        for (String word : words) {
+            String candidate = current.isEmpty() ? word : current + " " + word;
+            if (fm.stringWidth(candidate) > maxWidth && !current.isEmpty()) {
+                lines.add(current.toString());
+                current = new StringBuilder(word);
+            } else {
+                current = new StringBuilder(candidate);
+            }
+        }
+        if (!current.isEmpty()) lines.add(current.toString());
+        return lines;
     }
 
     private static void renderLoadingScreen(Graphics2D g, LoadingScreen loading, int width, int height) {

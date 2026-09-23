@@ -187,7 +187,7 @@ public class Part3Verification {
     }
 
     private static void testPetManagerAndCompanionPerks() {
-        assertEquals(5, PetType.values().length, "Must have 5 pet types");
+        assertEquals(7, PetType.values().length, "Must have 7 pet types (5 mundane + Phoenix/Unicorn legendary tames)");
 
         PetManager pets = new PetManager();
         assertEquals(0, pets.getTamedCount(), "Initial tamed count must be 0");
@@ -212,7 +212,19 @@ public class Part3Verification {
         pets.setActivePet(PetType.GLOWBAT);
         assertTrue(pets.emitsLight(), "Glowbat must emit light aura");
 
-        System.out.println("  [PASS] Pet Manager, 5 Companions & Dynamic Perk System verified");
+        // Legendary tames — Phoenix (fire damage) and Unicorn (movement speed)
+        pets.tamePet(PetType.PHOENIX);
+        pets.setActivePet(PetType.PHOENIX);
+        assertEquals(1.35f, pets.getFireDamageMultiplier(), 0.01f, "Phoenix must grant +35% fire damage");
+        assertEquals(1.0f, pets.getSpeedMultiplier(), 0.01f, "Speed multiplier must be 1.0 when Unicorn is inactive");
+
+        pets.tamePet(PetType.UNICORN);
+        pets.setActivePet(PetType.UNICORN);
+        assertEquals(1.20f, pets.getSpeedMultiplier(), 0.01f, "Unicorn must grant +20% movement speed");
+        assertEquals(1.0f, pets.getFireDamageMultiplier(), 0.01f, "Fire damage must revert to 1.0 when Phoenix is inactive");
+        assertEquals(5, pets.getTamedCount(), "5 of 7 pets tamed so far in this test (Spark Cat, Moss Turtle, Glowbat, Phoenix, Unicorn)");
+
+        System.out.println("  [PASS] Pet Manager, 7 Companions (incl. legendary tames) & Dynamic Perk System verified");
     }
 
     private static void testMountManagerAndSpeedOverrides() {

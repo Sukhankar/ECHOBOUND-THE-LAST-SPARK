@@ -91,7 +91,11 @@ public class Part6UnifiedEngineVerification {
     }
 
     private static void testMobArchetypesAndAIStateMachine() {
-        assertEquals(4, MobType.values().length, "Must have 4 hostile mob archetypes");
+        int hostileCount = 0;
+        for (MobType t : MobType.values()) {
+            if (t.temperament == com.echobound.entity.mob.Temperament.HOSTILE) hostileCount++;
+        }
+        assertEquals(5, hostileCount, "Must have 5 hostile mob archetypes (original 4 + legendary Dragon)");
 
         MobManager mm = new MobManager();
         assertEquals(0, mm.getActiveMobCount(), "Initial mob count must be 0");

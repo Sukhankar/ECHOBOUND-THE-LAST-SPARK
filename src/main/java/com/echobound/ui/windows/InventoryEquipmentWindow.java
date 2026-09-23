@@ -1,5 +1,6 @@
 package com.echobound.ui.windows;
 
+import com.echobound.assets.AssetManager;
 import com.echobound.combat.ModdedWeapon;
 import com.echobound.combat.RuneType;
 import com.echobound.core.UnifiedGameContext;
@@ -7,6 +8,7 @@ import com.echobound.items.*;
 
 import java.awt.*;
 import java.awt.event.KeyEvent;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +16,35 @@ import java.util.Map;
 public class InventoryEquipmentWindow {
     private int cursorIndex = 0;
     private int selectedEquipSlot = -1; // -1 none, 0..5 for HEAD..CORE
+
+    // Optional — set once from EchoBoundMasterEngine after AssetManager exists. Null-safe:
+    // renderItemIcon() falls back to the original flat-color square when unset, so this
+    // window still works standalone (e.g. any test that constructs it directly).
+    private AssetManager assetManager;
+
+    public void setAssetManager(AssetManager assetManager) {
+        this.assetManager = assetManager;
+    }
+
+    /** Draws one inventory-slot item icon. Every item used to render as a flat colored
+     *  square (ItemDefinition has no sprite reference, only iconColor) — this uses a real
+     *  representative icon per category where one exists (see
+     *  AssetManager.getItemCategoryIcon()), with iconColor kept as a tint wash so items
+     *  within the same category (e.g. the 6 different weapons) stay visually distinct.
+     *  Falls back to the original flat square for categories with no real-art match
+     *  (MATERIALS) or when no AssetManager is available. */
+    private void renderItemIcon(Graphics2D g, ItemDefinition def, int x, int y, int size) {
+        BufferedImage icon = assetManager != null ? assetManager.getItemCategoryIcon(def.category) : null;
+        if (icon != null) {
+            g.drawImage(icon, x, y, size, size, null);
+            Color c = def.iconColor;
+            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 90));
+            g.fillRect(x, y, size, size);
+        } else {
+            g.setColor(def.iconColor);
+            g.fillRect(x, y, size, size);
+        }
+    }
 
     public void handleKeyPress(int keyCode, UnifiedGameContext ctx) {
         int capacity = ctx.backpackTier.capacity;
@@ -182,8 +213,7 @@ public class InventoryEquipmentWindow {
                 int itemId = items.get(i);
                 ItemDefinition def = ItemRegistry.get(itemId);
                 if (def != null) {
-                    g.setColor(def.iconColor);
-                    g.fillRect(sx + 2, sy + 2, slotSize - 4, slotSize - 4);
+                    renderItemIcon(g, def, sx + 2, sy + 2, slotSize - 4);
 
                     // Stack Count
                     int count = ctx.playerInventory.getOrDefault(itemId, 0);

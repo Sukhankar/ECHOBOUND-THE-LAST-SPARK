@@ -7,6 +7,7 @@ import com.echobound.animation.AnimationState;
 import com.echobound.animation.NPCVisualController;
 import com.echobound.entity.mob.MobType;
 import com.echobound.graphics.SpriteSheet;
+import com.echobound.items.ItemCategory;
 import com.echobound.items.ItemRegistry;
 import com.echobound.npc.NPCDefinition;
 import com.echobound.npc.NPCManager;
@@ -183,6 +184,28 @@ public class AssetManager {
             img = loadSprite(relativePath);
         }
         return img;
+    }
+
+    /** Categories RealPixelAssetPipeline.categoryIconFile() has real art for — keep in sync
+     *  with that method. Anything else (MATERIALS, and the categories nothing in
+     *  ItemRegistry actually uses) returns null so callers keep their flat-color fallback
+     *  instead of slicing a transparent or wrong column out of the sheet. */
+    private static final java.util.Set<ItemCategory> CATEGORY_ICON_SUPPORTED = java.util.EnumSet.of(
+        ItemCategory.WEAPONS, ItemCategory.MAGIC, ItemCategory.ARMOR,
+        ItemCategory.RELICS, ItemCategory.FOOD, ItemCategory.POTIONS, ItemCategory.CURRENCY
+    );
+
+    /** Real 16×16 icon for an item category (see RealPixelAssetPipeline.buildCategoryIconsSheet()),
+     *  or null if this category has no real-art match — callers should fall back to
+     *  ItemDefinition.iconColor in that case, same as before this existed. */
+    public BufferedImage getItemCategoryIcon(ItemCategory category) {
+        if (!CATEGORY_ICON_SUPPORTED.contains(category)) return null;
+        BufferedImage sheet = getSprite("items/category_icons.png");
+        // Sanity-check this is really the category sheet, not the generic procedural
+        // fallback generateFallback() returns for a path it doesn't recognize.
+        if (sheet == null || sheet.getWidth() != ItemCategory.values().length * 16) return null;
+        int x = category.ordinal() * 16;
+        return sheet.getSubimage(x, 0, 16, 16);
     }
 
     private BufferedImage loadSprite(String relativePath) {

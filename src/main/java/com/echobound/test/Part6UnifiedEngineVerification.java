@@ -100,28 +100,34 @@ public class Part6UnifiedEngineVerification {
         MobManager mm = new MobManager();
         assertEquals(0, mm.getActiveMobCount(), "Initial mob count must be 0");
 
-        // Spawn Shadow Creeper at (30, 0, 0) while player is at (0, 0, 0)
-        // Distance is 30m > 24m -> IDLE
-        MobEntity creeper = mm.spawnMob(MobType.SHADOW_CREEPER, 30.0f, 0.0f, 0.0f);
+        // Ranges are pixel-scale (see MobEntity.ATTACK_RANGE/CHASE_RANGE = 26/200) — this test
+        // used to spawn at (30,0,0) expecting a 24-unit chase range, a "meters"-like scale
+        // that was never actually connected to the real pixel-scale world (blocks are 16px,
+        // move speeds ~100-200 px/sec): a hostile mob needed the player within 2 *pixels* to
+        // attack. Values below are scaled up to actually exercise the fixed, pixel-scale AI.
+        //
+        // Spawn Shadow Creeper at (300, 0, 0) while player is at (0, 0, 0).
+        // Distance is 300px > 200px CHASE_RANGE -> IDLE
+        MobEntity creeper = mm.spawnMob(MobType.SHADOW_CREEPER, 300.0f, 0.0f, 0.0f);
         Vec3 playerPos = new Vec3(0, 0, 0);
         mm.update(0.1f, playerPos, null);
 
-        assertObjectEquals(MobEntity.AIState.IDLE, creeper.state, "Mob at 30m distance must be IDLE");
+        assertObjectEquals(MobEntity.AIState.IDLE, creeper.state, "Mob at 300px distance must be IDLE");
         assertEquals(0.0f, creeper.velocity.x, 0.01f, "Idle velocity must be 0");
 
-        // Move player to (15, 0, 0). Distance is 15m <= 24m -> CHASE towards player (-X direction)
-        playerPos.set(15.0f, 0.0f, 0.0f);
+        // Move player to (150, 0, 0). Distance is 150px <= 200px CHASE_RANGE -> CHASE towards player (-X)
+        playerPos.set(150.0f, 0.0f, 0.0f);
         mm.update(0.1f, playerPos, null);
 
-        assertObjectEquals(MobEntity.AIState.CHASE, creeper.state, "Mob within 24m must CHASE player");
+        assertObjectEquals(MobEntity.AIState.CHASE, creeper.state, "Mob within 200px must CHASE player");
         assertTrue(creeper.velocity.x < 0, "Chasing velocity must move toward player (-X)");
 
-        // Move player to (29.0, 0, 0). Distance <= 2m -> ATTACK
-        creeper.position.set(30.0f, 0.0f, 0.0f);
-        playerPos.set(29.0f, 0.0f, 0.0f);
+        // Move player to within ATTACK_RANGE (26px) of the mob.
+        creeper.position.set(300.0f, 0.0f, 0.0f);
+        playerPos.set(280.0f, 0.0f, 0.0f);
         mm.update(0.1f, playerPos, null);
 
-        assertObjectEquals(MobEntity.AIState.ATTACK, creeper.state, "Mob within 2m must switch to ATTACK");
+        assertObjectEquals(MobEntity.AIState.ATTACK, creeper.state, "Mob within 26px must switch to ATTACK");
 
         System.out.println("  [PASS] Mob Archetypes & AI State Machine Transitions verified");
     }

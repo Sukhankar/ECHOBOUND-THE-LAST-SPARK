@@ -1,5 +1,7 @@
 package com.echobound.assets;
 
+import com.echobound.entity.mob.MobType;
+import com.echobound.items.ItemCategory;
 import com.echobound.sandbox.BlockType;
 
 import javax.imageio.ImageIO;
@@ -36,8 +38,9 @@ public class RealPixelAssetPipeline {
     private static final int WEAPON_H       = 24;
     private static final int NPC_FRAME_W    = 32;
     private static final int NPC_FRAME_H    = 32;
-    private static final int MOB_FRAME_W    = 16;
-    private static final int MOB_FRAME_H    = 16;
+    // Must match AssetManager.createMobAnimationController()'s SpriteSheet(sheetImg, 32, 32).
+    private static final int MOB_FRAME_W    = 32;
+    private static final int MOB_FRAME_H    = 32;
 
     // Animation row mapping for rin_sheet (rows 0-9, 8 cols wide = 256×320)
     // Row 0 = IDLE (4 frames), Row 1 = WALK (6), Row 2 = RUN (8),
@@ -63,7 +66,8 @@ public class RealPixelAssetPipeline {
                new File(processedDir, "mobs"),
                new File(processedDir, "npcs"),
                new File(processedDir, "effects"),
-               new File(processedDir, "tools"));
+               new File(processedDir, "tools"),
+               new File(processedDir, "ui"));
     }
 
     private void mkdirs(File... dirs) {
@@ -85,6 +89,8 @@ public class RealPixelAssetPipeline {
         buildWeaponSheet();
         buildToolSheet();
         buildEffectsSheet();
+        buildHeartIcon();
+        buildCategoryIconsSheet();
         log("Pipeline complete — " + sheetsBuilt + " sheet(s) built from real assets.");
         return sheetsBuilt;
     }
@@ -95,108 +101,116 @@ public class RealPixelAssetPipeline {
 
     // ── Step 1: Rin / Player Character sheet (256×320) ───────────────────────
 
+    /**
+     * Source is the CC0 "Hero Spritesheets (Ars Notoria)" pack (opengameart.org/content/
+     * hero-spritesheets-ars-notoria, by Balmer): a single 368×200 sheet, 46×50 frames on an
+     * 8×4 grid, genuine 16-bit pixel art (DB32 palette). Confirmed visually off a labeled
+     * contact sheet, not guessed: row 0 = stand/lunge-punch, row 1 = airborne punch, row 2 =
+     * knockdown/low-punch, row 3 = an 8-frame run cycle. The base character has no sword drawn
+     * in — it's a bare-fisted fighter — so ATTACK/MINE/CAST reuse its real punch/lunge frames
+     * rather than a weapon swing; combat damage is unaffected, only the on-screen animation.
+     * As with buildMobSheet()/the ninja-based rin_sheet before it, real frames are
+     * repeated/reordered (never invented) to fill the richer row layout
+     * AssetManager.createRinAnimationController() expects.
+     */
+    private static final int HERO_FRAME_W = 46;
+    private static final int HERO_FRAME_H = 50;
+
     private void buildRinSheet() {
-        File ninjaDir = new File(externalDir, "characters/ninja_frames");
-        if (!ninjaDir.isDirectory()) {
-            log("[SKIP] rin_sheet — ninja_frames directory not found");
-            return;
-        }
-
-        // Expected frame names for each animation row
-        String[][] frameSets = {
-            // Row 0: IDLE  (4 frames)
-            {"idle_0.png","idle_1.png","idle_2.png","idle_3.png",null,null,null,null},
-            // Row 1: WALK  (6 frames, reuse idle + run)
-            {"idle_0.png","run_0.png","idle_1.png","run_1.png","idle_2.png","run_2.png",null,null},
-            // Row 2: RUN   (6 frames → padded to 8)
-            {"run_0.png","run_1.png","run_2.png","run_3.png","run_4.png","run_5.png","run_0.png","run_1.png"},
-            // Row 3: JUMP/FALL/DJUMP (use jump frames)
-            {"jump_0.png","jump_1.png","jump_2.png","jump_3.png","jump_0.png","jump_1.png","jump_2.png","jump_3.png"},
-            // Row 4: DASH  (4 frames → use run fast)
-            {"run_2.png","run_3.png","run_4.png","run_5.png",null,null,null,null},
-            // Row 5: GLIDE (4 frames → use swim)
-            {"swim_0.png","swim_1.png","swim_2.png","swim_3.png",null,null,null,null},
-            // Row 6: ATTACK (3 frames → use attack)
-            {"attack_0.png","attack_1.png","attack_2.png","attack_0.png","attack_1.png","attack_2.png",null,null},
-            // Row 7: MINE  (4 frames → use x frames)
-            {"x_0.png","x_1.png","x_2.png","x_3.png",null,null,null,null},
-            // Row 8: CAST  (6 frames → swim + x mix)
-            {"swim_4.png","swim_5.png","x_0.png","x_1.png","x_2.png","x_3.png",null,null},
-            // Row 9: HURT/DEAD (use x + jump reversed)
-            {"x_0.png","x_1.png","x_2.png","jump_3.png","jump_2.png","jump_1.png","jump_0.png",null}
-        };
-
-        BufferedImage sheet = new BufferedImage(
-            RIN_SHEET_COLS * CHAR_FRAME_W, RIN_SHEET_ROWS * CHAR_FRAME_H, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = sheet.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-
-        boolean anyFrame = false;
-        for (int row = 0; row < RIN_SHEET_ROWS; row++) {
-            String[] frames = frameSets[row];
-            for (int col = 0; col < RIN_SHEET_COLS; col++) {
-                if (frames[col] == null) continue;
-                File f = new File(ninjaDir, frames[col]);
-                if (!f.exists()) continue;
-                try {
-                    BufferedImage src = ImageIO.read(f);
-                    if (src != null) {
-                        g.drawImage(src, col * CHAR_FRAME_W, row * CHAR_FRAME_H, CHAR_FRAME_W, CHAR_FRAME_H, null);
-                        anyFrame = true;
-                    }
-                } catch (IOException ignored) {}
-            }
-        }
-        g.dispose();
-
-        if (anyFrame) {
-            write(sheet, new File(processedDir, "characters/rin_sheet.png"), "rin_sheet");
-        } else {
-            log("[SKIP] rin_sheet — no ninja frames could be loaded");
-        }
-    }
-
-    // ── Step 2: NPC Sheet from Kenney roguelike characters (256×576) ─────────
-
-    private void buildNPCSheet() {
-        File src = new File(externalDir, "characters/kenney_roguelike_characters.png");
+        File src = new File(externalDir, "characters/hero_sheet.png");
         if (!src.exists()) {
-            log("[SKIP] npc_sheet — kenney_roguelike_characters.png not found");
+            log("[SKIP] rin_sheet — hero_sheet.png not found");
             return;
         }
         try {
             BufferedImage source = ImageIO.read(src);
-            if (source == null) { log("[FAIL] npc_sheet — could not read source"); return; }
+            if (source == null) { log("[FAIL] rin_sheet — unreadable"); return; }
 
-            // Kenney roguelike characters: 16×16 sprites arranged in a grid
-            int srcTileW = 16, srcTileH = 16;
-            int srcCols  = source.getWidth() / srcTileW;
-            int srcRows  = source.getHeight() / srcTileH;
-            if (srcCols == 0 || srcRows == 0) { log("[FAIL] npc_sheet — source too small"); return; }
+            // Per destination row: source (col, row) pairs into the 8×4 hero grid.
+            int[][][] frameSets = {
+                { {0,0}, {0,0}, {0,0}, {0,0} },                                   // 0 IDLE (4) — static stand pose
+                { {0,3}, {1,3}, {2,3}, {3,3}, {4,3}, {5,3} },                     // 1 WALK (6) — first 6 of the run cycle
+                { {0,3}, {1,3}, {2,3}, {3,3}, {4,3}, {5,3}, {6,3}, {7,3} },       // 2 RUN (8) — full real run cycle
+                { {1,1}, {2,1}, {3,1},                                            // 3 JUMP(0-2) — crouch → airborne
+                  {4,1}, {5,1},                                                    //   FALL(3-4) — descending
+                  {6,0}, {7,0}, {2,1} },                                          //   DJUMP(5-7) — leg-raised sprint reuse
+                { {1,3}, {3,3}, {5,3}, {7,3} },                                   // 4 DASH (4) — alternating run frames
+                { {0,2}, {1,2}, {0,1}, {0,2} },                                   // 5 GLIDE (4) — spread-limb falling poses
+                { {2,0}, {3,0}, {4,0}, {5,0}, {4,0}, {2,0} },                     // 6 ATTACK (6) — real punch/lunge sequence
+                { {2,2}, {3,2}, {4,2}, {5,2} },                                   // 7 MINE (4) — low punch/lunge variant
+                { {2,1}, {3,1}, {4,1}, {5,1}, {3,1}, {2,1} },                     // 8 CAST (6) — airborne punch, raised-arm feel
+                { {0,2}, {1,2}, {0,2},                                            // 9 HURT(0-2) — knockdown hit poses
+                  {1,2}, {1,2}, {1,2}, {1,2}, {1,2} },                            //   DEAD(3-7) — lying-down pose held
+            };
 
-            // Build 9 NPC × 2 rows (IDLE+WORK row, SIT+SLEEP row) at 32×32
-            // Each NPC gets a unique character from the Kenney sheet
-            int npcCount = Math.min(9, srcCols * srcRows);
-            BufferedImage npcSheet = new BufferedImage(256, 576, BufferedImage.TYPE_INT_ARGB);
+            BufferedImage sheet = new BufferedImage(
+                RIN_SHEET_COLS * CHAR_FRAME_W, RIN_SHEET_ROWS * CHAR_FRAME_H, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = sheet.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+
+            for (int row = 0; row < frameSets.length; row++) {
+                int[][] frames = frameSets[row];
+                for (int col = 0; col < frames.length; col++) {
+                    int srcCol = frames[col][0];
+                    int srcRow = frames[col][1];
+                    BufferedImage tile = source.getSubimage(
+                        srcCol * HERO_FRAME_W, srcRow * HERO_FRAME_H, HERO_FRAME_W, HERO_FRAME_H);
+                    g.drawImage(tile, col * CHAR_FRAME_W, row * CHAR_FRAME_H, CHAR_FRAME_W, CHAR_FRAME_H, null);
+                }
+            }
+            g.dispose();
+            write(sheet, new File(processedDir, "characters/rin_sheet.png"), "rin_sheet");
+        } catch (IOException e) {
+            log("[FAIL] rin_sheet — " + e.getMessage());
+        }
+    }
+
+    // ── Step 2: NPC Sheet from "32x32 RPG Character Sprites" (256×576) ───────
+
+    /**
+     * Source is the CC0 "32x32 RPG Character Sprites" pack (opengameart.org/content/
+     * 32x32-rpg-character-sprites, by Eldiran): a 384×672 sheet, 32×32 cells on a 12×21 grid.
+     * Confirmed visually off a labeled contact sheet: each character's full standing pose is
+     * drawn tall across TWO stacked cells (a 32×64 region — head/shoulders in the top cell,
+     * torso/legs in the bottom), not one 32×32 cell alone, so a single cell only ever shows
+     * half a character. Nine row-pairs (0-1, 2-3, ... 16-17), column 0, were hand-picked for
+     * visually distinct NPC archetypes (robed priest, villager, knight, hooded rogue, gilded
+     * paladin, etc.). The source uses classic magenta (255,0,255) color-key transparency, not
+     * an alpha channel, so it's keyed out to real alpha here before compositing — left as-is,
+     * every NPC would render inside a solid pink box.
+     */
+    private static final int RPGCHAR_CELL = 32;
+    private static final int[] NPC_SOURCE_ROW_PAIRS = {0, 2, 4, 6, 8, 10, 12, 14, 16};
+
+    private void buildNPCSheet() {
+        File src = new File(externalDir, "characters/rpg_characters.png");
+        if (!src.exists()) {
+            log("[SKIP] npc_sheet — rpg_characters.png not found");
+            return;
+        }
+        try {
+            BufferedImage raw = ImageIO.read(src);
+            if (raw == null) { log("[FAIL] npc_sheet — could not read source"); return; }
+            BufferedImage source = keyOutMagenta(raw);
+
+            int npcCount = NPC_SOURCE_ROW_PAIRS.length;
+            BufferedImage npcSheet = new BufferedImage(256, npcCount * 2 * NPC_FRAME_H, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = npcSheet.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
             for (int npc = 0; npc < npcCount; npc++) {
-                // Source character tile from kenney sheet
-                int srcCol = npc % srcCols;
-                int srcRow = npc / srcCols;
-                if (srcRow >= srcRows) break;
+                int topRow = NPC_SOURCE_ROW_PAIRS[npc];
+                // Full 32×64 standing pose (both stacked cells), scaled down to one 32×32 NPC
+                // token — a deliberate squash, not a crop, so the whole character silhouette
+                // (head to feet) still reads in the smaller space this game's NPCs use.
                 BufferedImage charTile = source.getSubimage(
-                    srcCol * srcTileW, srcRow * srcTileH, srcTileW, srcTileH);
+                    0, topRow * RPGCHAR_CELL, RPGCHAR_CELL, RPGCHAR_CELL * 2);
 
-                // Destination: npc*2 rows at 32×32, 8 cols
                 int dstRow0 = npc * 2;       // IDLE / WORK row
                 int dstRow1 = npc * 2 + 1;   // SIT / SLEEP row
                 for (int c = 0; c < 8; c++) {
-                    // IDLE/WORK row: draw char tile scaled to 32×32
                     g.drawImage(charTile, c * NPC_FRAME_W, dstRow0 * NPC_FRAME_H,
                                 NPC_FRAME_W, NPC_FRAME_H, null);
-                    // SIT/SLEEP row: slightly darker tint
                     g.drawImage(charTile, c * NPC_FRAME_W, dstRow1 * NPC_FRAME_H,
                                 NPC_FRAME_W, NPC_FRAME_H, null);
                     if (c >= 4) { // SIT shading
@@ -212,76 +226,122 @@ public class RealPixelAssetPipeline {
         }
     }
 
-    // ── Step 3: Mob Sheet from Kenney tiny dungeon (128×384) ─────────────────
+    // ── Step 3: Mob Sheet from the CC0 "Tiny Creatures" pack (128×N) ─────────
+
+    /**
+     * Source is the CC0, Kenney-collaborated "Tiny Creatures" pack (opengameart.org/content/
+     * tiny-creatures): a single 160×288 tilemap, 16×16 tiles on a tight 10×18 grid, no margin
+     * (see Tilesheet.txt in the pack). Coordinates were picked by hand off a rendered, labeled
+     * contact sheet of the actual grid (col,row) — each one visually confirmed to be a real
+     * creature art match for its MobType, not a guess. The pack ships one pose per creature
+     * (no separate walk/attack/death frames), so WALK/ATTACK/DEAD are synthesized from the
+     * single real base sprite via flip/offset/tint — the same technique the old fully-
+     * procedural generateMobsSheet() used for its rounded-rectangle placeholders, just now
+     * driven by real pixel art instead of a flat-fill shape.
+     */
+    private static final int CREATURE_TILE = 16;
+
+    private static int[] mobSourceTile(MobType type) {
+        return switch (type) {
+            case CORRUPTED_DRONE      -> new int[]{8, 1};  // armored robot/knight figure
+            case SHADOW_CREEPER       -> new int[]{4, 0};  // dark hooded shadow figure
+            case MAGMA_GOLEM          -> new int[]{5, 4};  // orange fire elemental
+            case VOID_STALKER         -> new int[]{7, 12}; // gray golem, tinted dark purple
+            case WOODLAND_FOX         -> new int[]{8, 16}; // orange fox
+            case CAVE_GLOWBAT         -> new int[]{6, 13}; // gray bat
+            case EMBER_CAT            -> new int[]{6, 15}; // orange lion (feline, fire-colored)
+            case MOSS_TURTLE_CREATURE -> new int[]{9, 14}; // green turtle
+            case SKY_CLOUDBIRD        -> new int[]{7, 11}; // gray owl, tinted sky-blue
+            case FIELD_RAT            -> new int[]{4, 13}; // small brown rabbit/critter
+            case MARSH_BEETLE         -> new int[]{5, 14}; // orange scorpion, tinted green
+            case DRAGON               -> new int[]{3, 3};  // red winged dragon
+            case PHOENIX_CREATURE     -> new int[]{3, 10}; // fire-colored bird, tinted warmer
+            case UNICORN_CREATURE     -> new int[]{1, 5};  // white horned unicorn
+        };
+    }
+
+    private static Color mobRealTint(MobType type) {
+        return switch (type) {
+            case CORRUPTED_DRONE  -> new Color(120, 190, 255, 55);
+            case VOID_STALKER     -> new Color(90, 20, 140, 80);
+            case SKY_CLOUDBIRD    -> new Color(150, 205, 255, 60);
+            case MARSH_BEETLE     -> new Color(60, 150, 60, 70);
+            case PHOENIX_CREATURE -> new Color(255, 110, 20, 55);
+            default               -> null;
+        };
+    }
 
     private void buildMobSheet() {
-        File src = new File(externalDir, "mobs/kenney_tiny_dungeon_tiles.png");
+        File src = new File(externalDir, "mobs/tiny_creatures.png");
         if (!src.exists()) {
-            log("[SKIP] mobs_sheet — kenney_tiny_dungeon_tiles.png not found");
+            log("[SKIP] mobs_sheet — tiny_creatures.png not found");
             return;
         }
         try {
             BufferedImage source = ImageIO.read(src);
             if (source == null) { log("[FAIL] mobs_sheet — unreadable"); return; }
+            int srcCols = source.getWidth() / CREATURE_TILE;
+            int srcRows = source.getHeight() / CREATURE_TILE;
 
-            // Kenney tiny dungeon: 16×16 sprites, many different tiles
-            int srcTileW = 16, srcTileH = 16;
-            int srcCols  = source.getWidth()  / srcTileW;
-            int srcRows  = source.getHeight() / srcTileH;
-
-            // 4 mobs × 3 animation-rows (IDLE, ATTACK, DEAD) × 4 frames
-            // Use different rows of the dungeon sheet for each mob
-            BufferedImage mobSheet = new BufferedImage(128, 384, BufferedImage.TYPE_INT_ARGB);
+            MobType[] types = MobType.values();
+            int rowsPerMob = 4; // IDLE, WALK, ATTACK, DEAD — see AssetManager.createMobAnimationController()
+            BufferedImage mobSheet = new BufferedImage(
+                4 * MOB_FRAME_W, types.length * rowsPerMob * MOB_FRAME_H, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = mobSheet.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-            // Pick representative source rows for each mob archetype
-            int[] mobSourceRows = {0, 1, 2, 3}; // rows in the dungeon tileset
-            Color[] mobTints = {
-                new Color(255, 80, 80, 0),   // Drone   — red tint  (0 = no tint)
-                new Color(140, 60, 200, 40),  // Creeper — purple tint
-                new Color(255, 140, 20, 60),  // Golem   — orange tint
-                new Color(60, 20, 120, 80)    // Stalker — dark purple tint
-            };
+            for (int m = 0; m < types.length; m++) {
+                int[] rc = mobSourceTile(types[m]);
+                int col = Math.min(rc[0], srcCols - 1);
+                int row = Math.min(rc[1], srcRows - 1);
+                BufferedImage base = source.getSubimage(
+                    col * CREATURE_TILE, row * CREATURE_TILE, CREATURE_TILE, CREATURE_TILE);
+                Color tint = mobRealTint(types[m]);
 
-            for (int mob = 0; mob < 4; mob++) {
-                int srcRow = mobSourceRows[mob] < srcRows ? mobSourceRows[mob] : 0;
-                for (int animRow = 0; animRow < 3; animRow++) { // IDLE, ATTACK, DEAD
-                    for (int frame = 0; frame < 4; frame++) {
-                        int srcCol = Math.min(frame, srcCols - 1);
-                        BufferedImage srcTile = source.getSubimage(
-                            srcCol * srcTileW, srcRow * srcTileH,
-                            srcTileW, srcTileH);
-
-                        int destX = frame * MOB_FRAME_W;
-                        int destY = (mob * 3 + animRow) * MOB_FRAME_H;
-
-                        // Scale 16→16 (no scaling needed for mob sheet)
-                        g.drawImage(srcTile, destX, destY, MOB_FRAME_W, MOB_FRAME_H, null);
-
-                        // Apply mob-specific tint
-                        if (mobTints[mob].getAlpha() > 0) {
-                            g.setColor(mobTints[mob]);
-                            g.fillRect(destX, destY, MOB_FRAME_W, MOB_FRAME_H);
-                        }
-
-                        // ATTACK row: add red glow overlay
-                        if (animRow == 1) {
-                            g.setColor(new Color(255, 0, 0, 30));
-                            g.fillRect(destX, destY, MOB_FRAME_W, MOB_FRAME_H);
-                        }
-                        // DEAD row: grey-fade overlay
-                        if (animRow == 2) {
-                            g.setColor(new Color(180, 180, 180, 120));
-                            g.fillRect(destX, destY, MOB_FRAME_W, MOB_FRAME_H);
-                        }
-                    }
+                for (int frame = 0; frame < 4; frame++) {
+                    // IDLE: static real sprite, no distortion.
+                    drawMobFrame(g, base, frame, m * rowsPerMob, tint, false, false, 0);
+                    // WALK: alternating horizontal flip + vertical bob simulates a stride
+                    // from a single source pose.
+                    drawMobFrame(g, base, frame, m * rowsPerMob + 1, tint, frame % 2 == 1, false,
+                                 frame % 2 == 0 ? 0 : 2);
+                    // ATTACK: drawn slightly larger (lunging forward) with a red flash overlay.
+                    drawMobFrame(g, base, frame, m * rowsPerMob + 2, tint, false, false, -2);
+                    Color attackFlash = new Color(255, 0, 0, 40);
+                    int ay = (m * rowsPerMob + 2) * MOB_FRAME_H;
+                    g.setColor(attackFlash);
+                    g.fillRect(frame * MOB_FRAME_W, ay, MOB_FRAME_W, MOB_FRAME_H);
+                    // DEAD: flipped upside-down (fallen) with a grey desaturating overlay.
+                    drawMobFrame(g, base, frame, m * rowsPerMob + 3, tint, false, true, 6);
+                    Color deadFade = new Color(160, 160, 160, 130);
+                    int dy = (m * rowsPerMob + 3) * MOB_FRAME_H;
+                    g.setColor(deadFade);
+                    g.fillRect(frame * MOB_FRAME_W, dy, MOB_FRAME_W, MOB_FRAME_H);
                 }
             }
             g.dispose();
             write(mobSheet, new File(processedDir, "mobs/mobs_sheet.png"), "mobs_sheet");
         } catch (IOException e) {
             log("[FAIL] mobs_sheet — " + e.getMessage());
+        }
+    }
+
+    /** Draws one real-art mob frame into the sheet, applying an optional tint wash and
+     *  flip/offset used to synthesize WALK/ATTACK/DEAD from the pack's single base pose. */
+    private void drawMobFrame(Graphics2D g, BufferedImage base, int frame, int destRow,
+                               Color tint, boolean flipH, boolean flipV, int yOffset) {
+        int destX = frame * MOB_FRAME_W;
+        int cellY = destRow * MOB_FRAME_H;
+        int destY = cellY + yOffset;
+        int sx1 = flipH ? CREATURE_TILE : 0;
+        int sx2 = flipH ? 0 : CREATURE_TILE;
+        int sy1 = flipV ? CREATURE_TILE : 0;
+        int sy2 = flipV ? 0 : CREATURE_TILE;
+        g.drawImage(base, destX, destY, destX + MOB_FRAME_W, destY + MOB_FRAME_H,
+                    sx1, sy1, sx2, sy2, null);
+        if (tint != null) {
+            g.setColor(tint);
+            g.fillRect(destX, cellY, MOB_FRAME_W, MOB_FRAME_H);
         }
     }
 
@@ -394,103 +454,129 @@ public class RealPixelAssetPipeline {
 
     // ── Step 5: Item Sheet from Kenney micro items (256×16) ──────────────────
 
+    /**
+     * Source for both item and weapon icons is the same CC0 "Hero Spritesheets (Ars Notoria)"
+     * pack already used for Rin (opengameart.org/content/hero-spritesheets-ars-notoria, by
+     * Balmer) — its assets/icons/ folder ships real 16×16 icons for potions, rings, books,
+     * swords and staffs, copied wholesale into assets/external/items/. Real icon art, not
+     * placeholder swatches; unlike the Rin/NPC sheets these already carry proper PNG alpha
+     * (indexed color + tRNS), no color-key transparency fix needed.
+     */
+    private static final String[] ITEM_ICON_FILES = {
+        "potionHealth.png", "potionHealthBig.png", "potionMana.png", "potionManaBig.png",
+        "ring-01.png", "ring-02.png", "ring-03.png", "ring-04.png",
+        "book1.png", "book2.png", "book3.png", "book4.png",
+        "statSTRPotion.png", "statDEFPotion.png", "statSPDPotion.png", "statCONPotion.png",
+    };
+
     private void buildItemSheet() {
-        File src = new File(externalDir, "items/kenney_micro_items.png");
-        if (!src.exists()) {
-            log("[SKIP] item_sheet — kenney_micro_items.png not found");
+        File dir = new File(externalDir, "items");
+        if (!dir.isDirectory()) {
+            log("[SKIP] item_sheet — items directory not found");
             return;
         }
-        try {
-            BufferedImage source = ImageIO.read(src);
-            if (source == null) { log("[FAIL] item_sheet — unreadable"); return; }
+        BufferedImage itemSheet = new BufferedImage(256, ITEM_SIZE, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = itemSheet.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-            // Scale/copy source as item sheet (standardize to 256×16, 16-item strip)
-            int srcTileW = Math.max(1, source.getWidth() / 16);
-            int srcTileH = source.getHeight();
-            BufferedImage itemSheet = new BufferedImage(256, ITEM_SIZE, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = itemSheet.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-
-            int srcCols = source.getWidth() / srcTileW;
-            for (int i = 0; i < 16; i++) {
-                int srcCol = i % Math.max(1, srcCols);
-                try {
-                    BufferedImage tile = source.getSubimage(srcCol * srcTileW, 0, srcTileW, srcTileH);
-                    g.drawImage(tile, i * ITEM_SIZE, 0, ITEM_SIZE, ITEM_SIZE, null);
-                } catch (Exception ignored) {}
-            }
-            g.dispose();
+        int placed = 0;
+        for (int i = 0; i < ITEM_ICON_FILES.length; i++) {
+            File f = new File(dir, ITEM_ICON_FILES[i]);
+            if (!f.exists()) continue;
+            try {
+                BufferedImage icon = ImageIO.read(f);
+                if (icon == null) continue;
+                g.drawImage(icon, i * ITEM_SIZE, 0, ITEM_SIZE, ITEM_SIZE, null);
+                placed++;
+            } catch (IOException ignored) {}
+        }
+        g.dispose();
+        if (placed > 0) {
             write(itemSheet, new File(processedDir, "items/item_sheet.png"), "item_sheet");
-        } catch (IOException e) {
-            log("[FAIL] item_sheet — " + e.getMessage());
+        } else {
+            log("[SKIP] item_sheet — no icon files could be loaded");
         }
     }
 
-    // ── Step 6: Weapon Sheet enhanced from Kenney platformer (288×24) ────────
+    // ── Step 6: Weapon Sheet from Ars Notoria sword/staff icons (288×24) ─────
+
+    private static final String[] WEAPON_ICON_FILES = {
+        "sword1.png", "sword2.png", "sword3.png", "sword4.png",
+        "sword5.png", "sword6.png", "sword7.png", "sword8.png",
+        "staff1.png", "staff2.png", "staff3.png", "staff4.png",
+    };
 
     private void buildWeaponSheet() {
-        File src = new File(externalDir, "tiles/kenney_platformer_tiles.png");
-        if (!src.exists()) {
-            log("[SKIP] weapon_sheet — source not found");
+        File dir = new File(externalDir, "items");
+        if (!dir.isDirectory()) {
+            log("[SKIP] weapon_sheet — items directory not found");
             return;
         }
-        try {
-            BufferedImage source = ImageIO.read(src);
-            if (source == null) return;
+        BufferedImage weaponSheet = new BufferedImage(288, WEAPON_H, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = weaponSheet.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-            // Source grid is 18×18 (see PLATFORMER_SRC_TILE) — using 16 here previously sliced
-            // across true tile boundaries and smeared adjacent art together.
-            int srcW = 18, srcH = 18; // dead path: source file no longer exists, kept only for graceful SKIP
-            int srcCols = source.getWidth() / srcW;
-            // Pull 12 "weapon-like" tiles from the platformer sheet and scale to 24×24
-            BufferedImage weaponSheet = new BufferedImage(288, WEAPON_H, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = weaponSheet.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-
-            for (int i = 0; i < 12; i++) {
-                int srcCol = (i * 3) % Math.max(1, srcCols);
-                try {
-                    BufferedImage tile = source.getSubimage(srcCol * srcW, 0, srcW, srcH);
-                    g.drawImage(tile, i * WEAPON_W, 0, WEAPON_W, WEAPON_H, null);
-                } catch (Exception ignored) {}
-            }
-            g.dispose();
+        int placed = 0;
+        for (int i = 0; i < WEAPON_ICON_FILES.length; i++) {
+            File f = new File(dir, WEAPON_ICON_FILES[i]);
+            if (!f.exists()) continue;
+            try {
+                BufferedImage icon = ImageIO.read(f);
+                if (icon == null) continue;
+                g.drawImage(icon, i * WEAPON_W, 0, WEAPON_W, WEAPON_H, null);
+                placed++;
+            } catch (IOException ignored) {}
+        }
+        g.dispose();
+        if (placed > 0) {
             write(weaponSheet, new File(processedDir, "weapons/weapon_sheet.png"), "weapon_sheet");
-        } catch (IOException e) {
-            log("[FAIL] weapon_sheet — " + e.getMessage());
+        } else {
+            log("[SKIP] weapon_sheet — no icon files could be loaded");
         }
     }
 
-    // ── Step 7: Tool Sheet (160×16) from kenney platformer ───────────────────
+    // ── Step 7: Tool Sheet (160×16) from CC0 Tool Icons (FacadeGaikan) ────────
+
+    /**
+     * Source is the FacadeGaikan sub-collection of "CC0 Tool Icons" (opengameart.org/content/
+     * cc0-tool-icons, node/29290) — real 32×32 pickaxe/hoe/shovel art in wood/stone/metal
+     * tiers, matching this game's own tiered tool progression. No axe or fishing rod exists
+     * in this sub-pack, so only 9 of the 10 slots are real art; the 10th reuses pick_metal
+     * rather than leaving a gap.
+     */
+    private static final String[] TOOL_ICON_FILES = {
+        "pick_wood.png", "pick_stone.png", "pick_metal.png",
+        "hoe_wood.png", "hoe_stone.png", "hoe_metal.png",
+        "shovel_wood.png", "shovel_stone.png", "shovel_metal.png",
+        "pick_metal.png",
+    };
 
     private void buildToolSheet() {
-        File src = new File(externalDir, "tiles/kenney_platformer_tiles.png");
-        if (!src.exists()) {
-            log("[SKIP] tool_sheet — source not found");
+        File dir = new File(externalDir, "tools");
+        if (!dir.isDirectory()) {
+            log("[SKIP] tool_sheet — tools directory not found");
             return;
         }
-        try {
-            BufferedImage source = ImageIO.read(src);
-            if (source == null) return;
+        BufferedImage toolSheet = new BufferedImage(160, TILE_SIZE, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = toolSheet.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-            // Source grid is 18×18 (see PLATFORMER_SRC_TILE), not 16×16.
-            int srcW = 18, srcH = 18; // dead path: source file no longer exists, kept only for graceful SKIP
-            int srcCols = source.getWidth() / srcW;
-            BufferedImage toolSheet = new BufferedImage(160, TILE_SIZE, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = toolSheet.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-
-            for (int i = 0; i < 10; i++) {
-                int srcCol = (i * 5 + 1) % Math.max(1, srcCols);
-                try {
-                    BufferedImage tile = source.getSubimage(srcCol * srcW, 0, srcW, srcH);
-                    g.drawImage(tile, i * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE, null);
-                } catch (Exception ignored) {}
-            }
-            g.dispose();
+        int placed = 0;
+        for (int i = 0; i < TOOL_ICON_FILES.length; i++) {
+            File f = new File(dir, TOOL_ICON_FILES[i]);
+            if (!f.exists()) continue;
+            try {
+                BufferedImage icon = ImageIO.read(f);
+                if (icon == null) continue;
+                g.drawImage(icon, i * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE, null);
+                placed++;
+            } catch (IOException ignored) {}
+        }
+        g.dispose();
+        if (placed > 0) {
             write(toolSheet, new File(processedDir, "tools/tool_sheet.png"), "tool_sheet");
-        } catch (IOException e) {
-            log("[FAIL] tool_sheet — " + e.getMessage());
+        } else {
+            log("[SKIP] tool_sheet — no icon files could be loaded");
         }
     }
 
@@ -528,7 +614,114 @@ public class RealPixelAssetPipeline {
         }
     }
 
+    // ── Step 9: Heart Icon from "Pixel Art HUD Bars and Icons" (16×16) ───────
+
+    /**
+     * Source is the CC0 "Pixel Art HUD Bars and Icons" pack (opengameart.org/content/
+     * pixel-art-hud-bars-and-icons, by grizzlei): a small 144×46 sheet of resource bars and
+     * icons. The heart icon (3rd of 4 in the bottom icon row, hand-picked off a pixel-bounds
+     * scan of the actual sheet — an 9×9 region at (18,35)) is the only piece used here.
+     * SandboxHUD.renderHearts() previously approximated a heart out of two filled circles and
+     * a triangle — exactly the "geometric figure" look this whole asset pass targets — so this
+     * feeds real heart art into that renderer instead. Scaled up to 16×16 for a crisp base to
+     * downscale from at render time.
+     */
+    private void buildHeartIcon() {
+        File src = new File(externalDir, "ui/heart_icon.png");
+        if (!src.exists()) {
+            log("[SKIP] heart_icon — ui/heart_icon.png not found");
+            return;
+        }
+        try {
+            BufferedImage source = ImageIO.read(src);
+            if (source == null) { log("[FAIL] heart_icon — unreadable"); return; }
+            BufferedImage scaled = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = scaled.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            g.drawImage(source, 0, 0, 16, 16, null);
+            g.dispose();
+            write(scaled, new File(processedDir, "ui/heart_icon.png"), "heart_icon");
+        } catch (IOException e) {
+            log("[FAIL] heart_icon — " + e.getMessage());
+        }
+    }
+
+    // ── Step 10: Item Category Icon Sheet (240×16) ────────────────────────────
+
+    /**
+     * ItemDefinition (see com.echobound.items) has no sprite reference at all — only a flat
+     * Color iconColor — so InventoryEquipmentWindow and SandboxHUD's quickslot bar have always
+     * drawn every item as a plain colored square, regardless of what real art exists for
+     * items/weapons/tools elsewhere in the pipeline. Auditing ItemRegistry shows only 8 of
+     * ItemCategory's 15 values are ever actually registered (WEAPONS, MAGIC, ARMOR, RELICS,
+     * MATERIALS, FOOD, POTIONS, CURRENCY), so rather than a full per-item icon system, this
+     * gives each of those a representative real icon, reused from the Ars Notoria icon set
+     * already vetted for items/weapons/tools. MATERIALS has no reasonable real-art match in
+     * anything downloaded so far (no ore/wood/gem icon) and is deliberately left with no entry
+     * here — the renderer falls back to the original flat-color square for it, same graceful-
+     * partial pattern as buildToolSheet()'s missing axe/fishing-rod.
+     * One 16×16 icon per column, indexed by ItemCategory.ordinal() (240 = 15 × 16); unused
+     * category columns are left fully transparent.
+     */
+    private static String categoryIconFile(ItemCategory cat) {
+        return switch (cat) {
+            case WEAPONS  -> "items/sword1.png";
+            case MAGIC    -> "items/book1.png";
+            case ARMOR    -> "items/armor1.png";
+            case RELICS   -> "items/ring-05.png";
+            case FOOD, POTIONS -> "items/potionHealth.png";
+            case CURRENCY -> "items/ring-01.png";
+            default       -> null; // MATERIALS and unused categories — no real-art match
+        };
+    }
+
+    private void buildCategoryIconsSheet() {
+        ItemCategory[] categories = ItemCategory.values();
+        BufferedImage sheet = new BufferedImage(categories.length * 16, 16, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = sheet.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+
+        int placed = 0;
+        for (ItemCategory cat : categories) {
+            String iconFile = categoryIconFile(cat);
+            if (iconFile == null) continue;
+            File f = new File(externalDir, iconFile);
+            if (!f.exists()) continue;
+            try {
+                BufferedImage icon = ImageIO.read(f);
+                if (icon == null) continue;
+                g.drawImage(icon, cat.ordinal() * 16, 0, 16, 16, null);
+                placed++;
+            } catch (IOException ignored) {}
+        }
+        g.dispose();
+        if (placed > 0) {
+            write(sheet, new File(processedDir, "items/category_icons.png"), "category_icons");
+        } else {
+            log("[SKIP] category_icons — no icon files could be loaded");
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** Converts classic magenta (255,0,255) color-key transparency to real alpha=0.
+     *  Several older CC0 packs (e.g. the Eldiran RPG character sheet) predate widespread
+     *  PNG alpha-channel authoring and instead reserve pure magenta as "not part of the
+     *  sprite" — composited as-is it renders as a solid pink box around every sprite. */
+    private static BufferedImage keyOutMagenta(BufferedImage src) {
+        BufferedImage out = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < src.getHeight(); y++) {
+            for (int x = 0; x < src.getWidth(); x++) {
+                int argb = src.getRGB(x, y);
+                if ((argb & 0x00FFFFFF) == 0x00FF00FF) {
+                    out.setRGB(x, y, 0);
+                } else {
+                    out.setRGB(x, y, argb | 0xFF000000);
+                }
+            }
+        }
+        return out;
+    }
 
     private void write(BufferedImage img, File dest, String name) {
         try {

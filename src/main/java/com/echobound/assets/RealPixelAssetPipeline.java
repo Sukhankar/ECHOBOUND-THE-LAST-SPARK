@@ -1,6 +1,7 @@
 package com.echobound.assets;
 
 import com.echobound.entity.mob.MobType;
+import com.echobound.items.ItemCategory;
 import com.echobound.sandbox.BlockType;
 
 import javax.imageio.ImageIO;
@@ -89,6 +90,7 @@ public class RealPixelAssetPipeline {
         buildToolSheet();
         buildEffectsSheet();
         buildHeartIcon();
+        buildCategoryIconsSheet();
         log("Pipeline complete — " + sheetsBuilt + " sheet(s) built from real assets.");
         return sheetsBuilt;
     }
@@ -641,6 +643,62 @@ public class RealPixelAssetPipeline {
             write(scaled, new File(processedDir, "ui/heart_icon.png"), "heart_icon");
         } catch (IOException e) {
             log("[FAIL] heart_icon — " + e.getMessage());
+        }
+    }
+
+    // ── Step 10: Item Category Icon Sheet (240×16) ────────────────────────────
+
+    /**
+     * ItemDefinition (see com.echobound.items) has no sprite reference at all — only a flat
+     * Color iconColor — so InventoryEquipmentWindow and SandboxHUD's quickslot bar have always
+     * drawn every item as a plain colored square, regardless of what real art exists for
+     * items/weapons/tools elsewhere in the pipeline. Auditing ItemRegistry shows only 8 of
+     * ItemCategory's 15 values are ever actually registered (WEAPONS, MAGIC, ARMOR, RELICS,
+     * MATERIALS, FOOD, POTIONS, CURRENCY), so rather than a full per-item icon system, this
+     * gives each of those a representative real icon, reused from the Ars Notoria icon set
+     * already vetted for items/weapons/tools. MATERIALS has no reasonable real-art match in
+     * anything downloaded so far (no ore/wood/gem icon) and is deliberately left with no entry
+     * here — the renderer falls back to the original flat-color square for it, same graceful-
+     * partial pattern as buildToolSheet()'s missing axe/fishing-rod.
+     * One 16×16 icon per column, indexed by ItemCategory.ordinal() (240 = 15 × 16); unused
+     * category columns are left fully transparent.
+     */
+    private static String categoryIconFile(ItemCategory cat) {
+        return switch (cat) {
+            case WEAPONS  -> "items/sword1.png";
+            case MAGIC    -> "items/book1.png";
+            case ARMOR    -> "items/armor1.png";
+            case RELICS   -> "items/ring-05.png";
+            case FOOD, POTIONS -> "items/potionHealth.png";
+            case CURRENCY -> "items/ring-01.png";
+            default       -> null; // MATERIALS and unused categories — no real-art match
+        };
+    }
+
+    private void buildCategoryIconsSheet() {
+        ItemCategory[] categories = ItemCategory.values();
+        BufferedImage sheet = new BufferedImage(categories.length * 16, 16, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = sheet.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+
+        int placed = 0;
+        for (ItemCategory cat : categories) {
+            String iconFile = categoryIconFile(cat);
+            if (iconFile == null) continue;
+            File f = new File(externalDir, iconFile);
+            if (!f.exists()) continue;
+            try {
+                BufferedImage icon = ImageIO.read(f);
+                if (icon == null) continue;
+                g.drawImage(icon, cat.ordinal() * 16, 0, 16, 16, null);
+                placed++;
+            } catch (IOException ignored) {}
+        }
+        g.dispose();
+        if (placed > 0) {
+            write(sheet, new File(processedDir, "items/category_icons.png"), "category_icons");
+        } else {
+            log("[SKIP] category_icons — no icon files could be loaded");
         }
     }
 

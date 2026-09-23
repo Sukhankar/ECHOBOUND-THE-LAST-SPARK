@@ -93,6 +93,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         this.menuController = new TitleMenuController(saveManager, settingsManager);
         this.windowManager = new WindowManager();
         this.assetManager = new AssetManager();
+        this.windowManager.inventoryWindow.setAssetManager(this.assetManager);
         this.renderer = new PixelSandboxRenderer(this.assetManager);
         this.hud = new SandboxHUD(assetManager.getSprite("ui/heart_icon.png"));
         this.echo = new EchoSandboxClone();

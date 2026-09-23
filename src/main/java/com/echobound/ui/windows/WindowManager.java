@@ -13,6 +13,16 @@ public class WindowManager {
     public final CraftingWindow craftingWindow = new CraftingWindow();
     public final QuestLogWindow questLogWindow = new QuestLogWindow();
     public final TutorialControlsWindow tutorialWindow = new TutorialControlsWindow();
+    public final ShopWindow shopWindow = new ShopWindow();
+
+    /** Opens the SHOP window for a specific merchant — unlike the other windows, this one
+     *  isn't behind a fixed global toggle key since it only makes sense in the context of
+     *  whichever NPC the player is currently talking to (see EchoBoundMasterEngine's [F]/[B]
+     *  interact handling). */
+    public void openShop(com.echobound.npc.NPCDefinition npc) {
+        shopWindow.open(npc);
+        activeWindow = InGameWindowType.SHOP;
+    }
 
     public InGameWindowType getActiveWindow() {
         return activeWindow;
@@ -102,6 +112,9 @@ public class WindowManager {
                     closeAllWindows();
                 }
                 return true;
+            case SHOP:
+                shopWindow.handleKeyPress(keyCode, ctx);
+                return true;
             default:
                 return false;
         }
@@ -110,6 +123,8 @@ public class WindowManager {
     public void update(float dt) {
         if (activeWindow == InGameWindowType.CRAFTING) {
             craftingWindow.update(dt);
+        } else if (activeWindow == InGameWindowType.SHOP) {
+            shopWindow.update(dt);
         }
     }
 
@@ -132,6 +147,9 @@ public class WindowManager {
                 break;
             case TUTORIAL_CONTROLS:
                 tutorialWindow.render(g, ctx, width, height);
+                break;
+            case SHOP:
+                shopWindow.render(g, ctx, width, height);
                 break;
             default:
                 break;

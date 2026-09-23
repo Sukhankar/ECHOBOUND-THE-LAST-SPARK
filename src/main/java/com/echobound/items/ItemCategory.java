@@ -14,7 +14,8 @@ public enum ItemCategory {
     BUILDING_ITEMS("Building Items"),
     KEYS("Keys"),
     MAPS("Maps"),
-    COMPANION_ITEMS("Companion Items");
+    COMPANION_ITEMS("Companion Items"),
+    CURRENCY("Currency");
 
     public final String displayName;
 

@@ -167,9 +167,15 @@ public class Part7MenusAndSavesVerification {
         TitleMenuController controller = new TitleMenuController(sm, setm);
         assertObjectEquals(GameState.LOADING, controller.getCurrentState(), "Initial state is LOADING");
 
-        // Update until loading completes
+        // Update until loading completes — this now leads into the opening story cinematic
+        // rather than straight to the title menu.
         controller.update(1.5f);
-        assertObjectEquals(GameState.TITLE_MENU, controller.getCurrentState(), "State should transition to TITLE_MENU");
+        assertObjectEquals(GameState.INTRO_CINEMATIC, controller.getCurrentState(), "State should transition to INTRO_CINEMATIC after loading");
+
+        // Cinematic is skippable (any key/click) — verify that path reaches TITLE_MENU too.
+        controller.skipCinematic();
+        assertObjectEquals(GameState.TITLE_MENU, controller.getCurrentState(), "Skipping the cinematic should transition to TITLE_MENU");
+        assertTrue(controller.getCinematicIntro().wasSkipped(), "CinematicIntro must record that it was skipped");
 
         // Navigate menu
         controller.moveCursorDown();

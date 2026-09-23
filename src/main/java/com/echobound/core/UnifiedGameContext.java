@@ -14,7 +14,9 @@ import com.echobound.companion.PetManager;
 import com.echobound.cooking.CookingManager;
 import com.echobound.crafting.CraftingEngine;
 import com.echobound.crafting.CraftingRecipe;
+import com.echobound.entity.mob.MobEntity;
 import com.echobound.entity.mob.MobManager;
+import com.echobound.entity.mob.MobType;
 import com.echobound.faction.FactionManager;
 import com.echobound.farming.CropType;
 import com.echobound.farming.FarmingManager;
@@ -34,6 +36,7 @@ import com.echobound.quest.QuestManager;
 import com.echobound.sandbox.DayNightCycle;
 import com.echobound.sandbox.PlayerSandboxEntity;
 import com.echobound.sandbox.SandboxWorld;
+import com.echobound.sandbox.WorldChunk;
 import com.echobound.story.StoryProgressionEngine;
 import com.echobound.fishing.FishingEngine;
 import com.echobound.treasure.TreasureManager;
@@ -80,6 +83,37 @@ public class UnifiedGameContext {
     public final ObjectPool<SpellProjectile> spellPool;
     public final Map<Integer, Integer> playerInventory = new HashMap<>();
 
+    // Ambient wildlife spawning — see updateWildlifeSpawning(). Before this, MobManager.spawnMob
+    // was never called anywhere in the live game (only from tests): the entire creature/combat
+    // system existed but nothing ever populated the world with it during normal play.
+    private static final float WILDLIFE_SPAWN_INTERVAL = 6.0f;
+    private static final int MAX_AMBIENT_MOBS = 10;
+    private static final float SPAWN_MIN_DIST = 90.0f;
+    private static final float SPAWN_MAX_DIST = 230.0f;
+    private static final MobType[] GRASSLAND_POOL = {
+        MobType.WOODLAND_FOX, MobType.SKY_CLOUDBIRD, MobType.EMBER_CAT,
+        MobType.FIELD_RAT, MobType.MARSH_BEETLE, MobType.SHADOW_CREEPER
+    };
+    private static final MobType[] DESERT_POOL = {
+        MobType.FIELD_RAT, MobType.CORRUPTED_DRONE, MobType.MAGMA_GOLEM
+    };
+    private static final MobType[] TUNDRA_POOL = {
+        MobType.CAVE_GLOWBAT, MobType.MOSS_TURTLE_CREATURE, MobType.VOID_STALKER
+    };
+    private final java.util.Random wildlifeRng = new java.util.Random();
+    private float wildlifeSpawnTimer = 2.0f; // first attempt shortly after the world loads
+
+    // Mythical wildlife — a separate, much rarer roll from ordinary ambient spawning above,
+    // so a dragon (or a phoenix/unicorn worth taming) stays a genuine event instead of just
+    // another entry in the regular animal rotation. At most one legendary creature is ever
+    // alive in the world at a time.
+    private static final float LEGENDARY_CHECK_INTERVAL = 45.0f;
+    private static final float LEGENDARY_SPAWN_CHANCE = 0.12f; // per check, ~once every ~6 minutes on average
+    private static final MobType[] LEGENDARY_POOL = {
+        MobType.DRAGON, MobType.PHOENIX_CREATURE, MobType.UNICORN_CREATURE
+    };
+    private float legendarySpawnTimer = 20.0f;
+
     public UnifiedGameContext() {
         this.world = new SandboxWorld(42L);
         this.player = new PlayerSandboxEntity(0, 0, 10);
@@ -112,6 +146,9 @@ public class UnifiedGameContext {
         this.puzzleManager = new PuzzleManager();
 
         this.spellPool = new ObjectPool<>(64, SpellProjectile::new);
+
+        // Starting purse for the NPC shop system.
+        playerInventory.put(ItemRegistry.CURRENCY_SPARK_COIN, 150);
     }
 
     public void update(float dt) {
@@ -119,12 +156,21 @@ public class UnifiedGameContext {
         dayNightCycle.update(dt);
 
         // 2. Traversal speed modifications from Mount, Cooking, and Equipment
-        float baseSpeed = 160.0f * cookingManager.getSpeedMultiplier() * equipmentManager.getDashMultiplier();
+        float baseSpeed = 160.0f * cookingManager.getSpeedMultiplier() * equipmentManager.getDashMultiplier()
+                * petManager.getSpeedMultiplier();
         float effectiveSpeed = mountManager.getActiveSpeed(baseSpeed);
         player.setMaxSpeed(effectiveSpeed);
 
-        // 3. Update Player & World
-        player.update(dt, world);
+        // 3. Player physics/input is advanced once by EchoBoundMasterEngine.tick(), which
+        // calls the real ctx.player.update(world, inLeft, ..., mineHeld, placePressed, dt)
+        // BEFORE calling this method. A second call used to happen right here via the
+        // now-removed zero-input update(dt, world) overload — since that overload passed
+        // mineHeld=false and placePressed=false unconditionally, it silently reset
+        // miningProgress back to 0 (and re-zeroed velocity) at the end of every single tick,
+        // completely breaking mining and block placement in the shipped game. It also
+        // double-applied gravity for one extra dt each tick. Found by driving the real
+        // engine tick loop end-to-end and checking mining actually removed a block —
+        // it didn't, until this redundant call was removed.
 
         // 4. Update Living NPCs with weather/time schedule
         npcManager.update(dayNightCycle);
@@ -140,6 +186,8 @@ public class UnifiedGameContext {
 
         // 7. Update Mobs AI relative to player position and safe zones
         mobManager.update(dt, player.getPosition(), structureManager);
+        updateWildlifeSpawning(dt);
+        updateLegendarySpawning(dt);
 
         // 8. Story Progression & Post-Game unlocks
         postGameEngine.checkStoryProgression(storyEngine);
@@ -150,7 +198,71 @@ public class UnifiedGameContext {
 
         // 10. FX Updates
         particleFXManager.update(dt);
+        particleFXManager.updateWeather(dt, player.pos.x, player.pos.y - 60.0f, dayNightCycle.getWeather());
         floatingTextManager.update(dt);
+    }
+
+    /** Periodically spawns one ambient creature at a random ring around the player, picked
+     *  from a pool matching the biome at that spot (see SandboxWorld.getBiomeAt / the
+     *  WorldChunk biome system) — capped so the world doesn't fill up with wildlife forever. */
+    private void updateWildlifeSpawning(float dt) {
+        wildlifeSpawnTimer -= dt;
+        if (wildlifeSpawnTimer > 0) return;
+        wildlifeSpawnTimer = WILDLIFE_SPAWN_INTERVAL;
+
+        if (mobManager.getActiveMobCount() >= MAX_AMBIENT_MOBS) return;
+
+        float angle = wildlifeRng.nextFloat() * (float) (Math.PI * 2.0);
+        float dist = SPAWN_MIN_DIST + wildlifeRng.nextFloat() * (SPAWN_MAX_DIST - SPAWN_MIN_DIST);
+        float spawnX = player.pos.x + (float) Math.cos(angle) * dist;
+        float spawnY = player.pos.y + (float) Math.sin(angle) * dist;
+
+        int bx = (int) Math.floor(spawnX / WorldChunk.BLOCK_PIXEL_SIZE);
+        int by = (int) Math.floor(spawnY / WorldChunk.BLOCK_PIXEL_SIZE);
+        int topZ = world.getTopSolidBlockZ(bx, by);
+        float spawnZ = (topZ + 1) * WorldChunk.BLOCK_PIXEL_SIZE;
+
+        WorldChunk.Biome biome = world.getBiomeAt(bx, by);
+        MobType[] pool = switch (biome) {
+            case DESERT -> DESERT_POOL;
+            case TUNDRA -> TUNDRA_POOL;
+            default -> GRASSLAND_POOL;
+        };
+        MobType type = pool[wildlifeRng.nextInt(pool.length)];
+        mobManager.spawnMob(type,
+                bx * WorldChunk.BLOCK_PIXEL_SIZE + 8, by * WorldChunk.BLOCK_PIXEL_SIZE + 8, spawnZ);
+    }
+
+    private boolean hasLegendaryActive() {
+        for (MobEntity mob : mobManager.getActiveMobs()) {
+            for (MobType legendary : LEGENDARY_POOL) {
+                if (mob.type == legendary) return true;
+            }
+        }
+        return false;
+    }
+
+    private void updateLegendarySpawning(float dt) {
+        legendarySpawnTimer -= dt;
+        if (legendarySpawnTimer > 0) return;
+        legendarySpawnTimer = LEGENDARY_CHECK_INTERVAL;
+
+        if (hasLegendaryActive()) return; // at most one at a time
+        if (wildlifeRng.nextFloat() > LEGENDARY_SPAWN_CHANCE) return;
+
+        float angle = wildlifeRng.nextFloat() * (float) (Math.PI * 2.0);
+        float dist = SPAWN_MAX_DIST * 0.8f + wildlifeRng.nextFloat() * SPAWN_MAX_DIST; // further out than ordinary wildlife
+        float spawnX = player.pos.x + (float) Math.cos(angle) * dist;
+        float spawnY = player.pos.y + (float) Math.sin(angle) * dist;
+
+        int bx = (int) Math.floor(spawnX / WorldChunk.BLOCK_PIXEL_SIZE);
+        int by = (int) Math.floor(spawnY / WorldChunk.BLOCK_PIXEL_SIZE);
+        int topZ = world.getTopSolidBlockZ(bx, by);
+        float spawnZ = (topZ + 1) * WorldChunk.BLOCK_PIXEL_SIZE;
+
+        MobType type = LEGENDARY_POOL[wildlifeRng.nextInt(LEGENDARY_POOL.length)];
+        mobManager.spawnMob(type,
+                bx * WorldChunk.BLOCK_PIXEL_SIZE + 8, by * WorldChunk.BLOCK_PIXEL_SIZE + 8, spawnZ);
     }
 
     public boolean performJump() {
@@ -217,6 +329,9 @@ public class UnifiedGameContext {
         // Boost with Pet damage if active
         if (weapon.hasLightningElement()) {
             damage = (int) (damage * petManager.getLightningDamageMultiplier());
+        }
+        if (weapon.hasFireElement()) {
+            damage = (int) (damage * petManager.getFireDamageMultiplier());
         }
 
         AABB3D attackArea = new AABB3D(

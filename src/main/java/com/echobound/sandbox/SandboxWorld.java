@@ -34,6 +34,18 @@ public class SandboxWorld {
         return chunks.size();
     }
 
+    public long getSeed() {
+        return seed;
+    }
+
+    /** Which biome a given block position falls in — used by ambient wildlife spawning to
+     *  pick a creature type that actually fits the terrain there (see UnifiedGameContext). */
+    public WorldChunk.Biome getBiomeAt(int blockX, int blockY) {
+        int cx = Math.floorDiv(blockX, WorldChunk.CHUNK_SIZE_X);
+        int cy = Math.floorDiv(blockY, WorldChunk.CHUNK_SIZE_Y);
+        return WorldChunk.biomeAt(cx, cy, seed);
+    }
+
     public BlockType getBlock(int wx, int wy, int wz) {
         if (wz < 0 || wz >= WorldChunk.CHUNK_SIZE_Z) {
             return BlockType.AIR;

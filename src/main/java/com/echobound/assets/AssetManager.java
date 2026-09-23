@@ -346,25 +346,31 @@ public class AssetManager {
         BufferedImage sheetImg = getSprite("mobs/mobs_sheet.png");
         SpriteSheet sheet = new SpriteSheet(sheetImg, 32, 32);
 
-        int rowOffset = 0;
-        if (type == MobType.SHADOW_CREEPER) rowOffset = 1;
-        else if (type == MobType.MAGMA_GOLEM) rowOffset = 2;
-        else if (type == MobType.VOID_STALKER) rowOffset = 3;
+        // Row block index — was a hardcoded 4-case if-chain that silently defaulted every
+        // type past the original 4 monsters to row 0 (Corrupted Drone's frames). Using the
+        // enum's own ordinal means every new creature type automatically gets its own block.
+        int rowOffset = type.ordinal();
+        int rowsPerMob = 4; // IDLE, WALK, ATTACK, DEAD — see generateMobsSheet()
 
         AnimationController ctrl = new AnimationController();
 
         Animation idle = new Animation("IDLE", true);
-        for (int i = 0; i < 4; i++) idle.addFrame(sheet.getSprite(i, rowOffset * 3), 0.15f);
+        for (int i = 0; i < 4; i++) idle.addFrame(sheet.getSprite(i, rowOffset * rowsPerMob), 0.15f);
         ctrl.registerAnimation(AnimationState.IDLE, idle);
-        ctrl.registerAnimation(AnimationState.WALK, idle);
-        ctrl.registerAnimation(AnimationState.RUN, idle);
+
+        // WALK is now its own real animation (leg-shuffle + bob), not an IDLE alias — every
+        // creature used to look frozen in place while chasing, wandering, or fleeing.
+        Animation walk = new Animation("WALK", true);
+        for (int i = 0; i < 4; i++) walk.addFrame(sheet.getSprite(i, rowOffset * rowsPerMob + 1), 0.12f);
+        ctrl.registerAnimation(AnimationState.WALK, walk);
+        ctrl.registerAnimation(AnimationState.RUN, walk);
 
         Animation attack = new Animation("ATTACK", false);
-        for (int i = 0; i < 4; i++) attack.addFrame(sheet.getSprite(i, rowOffset * 3 + 1), 0.09f);
+        for (int i = 0; i < 4; i++) attack.addFrame(sheet.getSprite(i, rowOffset * rowsPerMob + 2), 0.09f);
         ctrl.registerAnimation(AnimationState.ATTACK, attack);
 
         Animation dead = new Animation("DEAD", false);
-        for (int i = 0; i < 4; i++) dead.addFrame(sheet.getSprite(i, rowOffset * 3 + 2), 0.12f);
+        for (int i = 0; i < 4; i++) dead.addFrame(sheet.getSprite(i, rowOffset * rowsPerMob + 3), 0.12f);
         ctrl.registerAnimation(AnimationState.DEAD, dead);
         ctrl.registerAnimation(AnimationState.HURT, dead);
 
@@ -434,6 +440,47 @@ public class AssetManager {
         return sheet.getSprite(col, row);
     }
 
+    /**
+     * A standalone decorative world structure (house), loaded straight from
+     * assets/external/structures/ — CC0 "House Sets" pack by Shepardskin (opengameart.org).
+     * Unlike the terrain/mob sheets, this isn't run through RealPixelAssetPipeline: each
+     * sprite is already a complete, correctly-sized multi-tile object (~63x53px) meant to be
+     * drawn as one image, not sliced into a grid, so there's no slicing step to do. Falls
+     * back to a simple procedural silhouette if the file is missing, same policy as
+     * everything else in this class.
+     */
+    public BufferedImage getStructureSprite(String name) {
+        String key = "external_structure/" + name;
+        BufferedImage cached = spriteCache.get(key);
+        if (cached != null) return cached;
+
+        File file = new File(new File(baseDir, "external/structures"), name + ".gif");
+        BufferedImage img = null;
+        if (file.exists()) {
+            try {
+                img = ImageIO.read(file);
+            } catch (IOException ignored) {}
+        }
+        if (img == null) {
+            img = generateHouseFallback();
+        }
+        spriteCache.put(key, img);
+        return img;
+    }
+
+    private BufferedImage generateHouseFallback() {
+        BufferedImage img = new BufferedImage(48, 40, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setColor(new Color(160, 110, 70));
+        g.fillRect(6, 18, 36, 20);
+        g.setColor(new Color(120, 40, 40));
+        g.fillPolygon(new int[]{2, 24, 46}, new int[]{18, 2, 18}, 3);
+        g.setColor(new Color(90, 60, 40));
+        g.fillRect(20, 26, 8, 12);
+        g.dispose();
+        return img;
+    }
+
     public BufferedImage getNPCPortrait(String npcId) {
         if (npcId != null && npcId.toLowerCase().contains("kael")) {
             return getSprite("portraits/kael_portrait.png");
@@ -464,13 +511,22 @@ public class AssetManager {
     private void drawRinFrame(Graphics2D g, int x, int y, int row, int col) {
         int cx = x + 16;
         int cy = y + 26;
+        boolean isWalkOrRun = (row == 1 || row == 2);
 
         // Scarf flutter offset
         int scarfDx = -6 - (col % 4) * 2;
         int scarfDy = -4 + (col % 3);
 
-        // Body bobbing
-        int bob = (row == 1 || row == 2) ? ((col % 2) * 2) : (col % 2);
+        // Body bobbing — walk/run got a much more pronounced up/down cycle than idle's
+        // 1px twitch, since a barely-there bob read as "not walking" even though the state
+        // machine (IDLE/WALK/RUN) was switching correctly underneath it.
+        int bob;
+        if (isWalkOrRun) {
+            int phase = col % 4; // 0,1,2,3 rise-peak-fall-trough
+            bob = new int[]{1, 3, 1, 0}[phase] * (row == 2 ? 2 : 1); // RUN bobs harder than WALK
+        } else {
+            bob = col % 2;
+        }
 
         // Head
         g.setColor(new Color(245, 195, 150));
@@ -491,22 +547,32 @@ public class AssetManager {
         g.setColor(new Color(242, 128, 58));
         g.fillRect(cx - 4, cy - 12 - bob, 8, 7);
 
-        // Golden Spark Gauntlet
+        // Golden Spark Gauntlet — swings opposite the legs during walk/run (natural
+        // counter-swing) instead of staying pinned at the hip the whole cycle.
         g.setColor(new Color(255, 215, 0));
         if (row == 6) { // Attack pose
             g.fillRect(cx + 4 + col * 2, cy - 14, 5, 4);
         } else if (row == 7) { // Mine pose
             g.fillRect(cx + 2, cy - 18 + col * 3, 4, 4);
+        } else if (isWalkOrRun) {
+            int armSwing = new int[]{0, 2, 0, -2}[col % 4] * (row == 2 ? 2 : 1);
+            g.fillRect(cx + 3 + armSwing, cy - 10 - bob, 4, 4);
         } else {
             g.fillRect(cx + 3, cy - 10 - bob, 4, 4);
         }
 
-        // Trousers & Boots
+        // Trousers & Boots — a real 4-phase stride (legs cross through a neutral pose each
+        // half-cycle, not just mirror back and forth) with a much larger stride length and
+        // the forward leg lifted, so the silhouette unmistakably reads as walking/running
+        // instead of two feet sliding a couple pixels apart.
         g.setColor(new Color(40, 35, 50));
-        if (row == 1 || row == 2) { // Walk/Run stride
-            int legStride = (col % 4) * 2 - 3;
-            g.fillRect(cx - 4 - legStride, cy - 5, 3, 5);
-            g.fillRect(cx + 1 + legStride, cy - 5, 3, 5);
+        if (isWalkOrRun) {
+            int strideMag = (row == 2 ? 6 : 4);
+            int[] strideCycle = {0, strideMag, 0, -strideMag};
+            int stride = strideCycle[col % 4];
+            int lift = (Math.abs(stride) == strideMag) ? 1 : 0; // forward leg lifts slightly
+            g.fillRect(cx - 4 - stride, cy - 5 + (stride > 0 ? -lift : 0), 3, 5);
+            g.fillRect(cx + 1 + stride, cy - 5 + (stride < 0 ? -lift : 0), 3, 5);
         } else {
             g.fillRect(cx - 4, cy - 5, 3, 5);
             g.fillRect(cx + 1, cy - 5, 3, 5);
@@ -593,27 +659,44 @@ public class AssetManager {
         return sheet;
     }
 
+    /**
+     * 4 cols x (N mobs x 4 rows) of 32x32 frames: IDLE, WALK, ATTACK, DEAD per MobType.
+     * Sized off MobType.values().length (not a hardcoded 4) so new creature types — the
+     * passive/neutral wildlife and pests added alongside taming — get their own frames
+     * instead of aliasing an existing monster's look. WALK gets a real leg-shuffle +
+     * vertical bob, distinct from the static IDLE pose (previously WALK/RUN just reused
+     * IDLE's animation outright, so every creature looked frozen while moving).
+     */
     private BufferedImage generateMobsSheet() {
-        // 4 cols x 12 rows of 32x32 frames (4 mobs x 3 rows each: IDLE, ATTACK, DEAD)
-        BufferedImage sheet = new BufferedImage(128, 384, BufferedImage.TYPE_INT_ARGB);
+        MobType[] types = MobType.values();
+        int rowsPerMob = 4; // IDLE, WALK, ATTACK, DEAD
+        BufferedImage sheet = new BufferedImage(128, types.length * rowsPerMob * 32, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = sheet.createGraphics();
 
-        Color[] mobColors = {
-            new Color(180, 30, 40),  // Drone
-            new Color(110, 40, 160), // Shadow Creeper
-            new Color(220, 80, 20),  // Magma Golem
-            new Color(60, 20, 100)   // Void Stalker
-        };
-
-        for (int m = 0; m < 4; m++) {
-            Color mc = mobColors[m];
-            for (int r = 0; r < 3; r++) {
-                int row = m * 3 + r;
+        for (int m = 0; m < types.length; m++) {
+            Color mc = mobColor(types[m]);
+            for (int r = 0; r < rowsPerMob; r++) {
+                int row = m * rowsPerMob + r;
                 for (int c = 0; c < 4; c++) {
+                    int bob = (r == 1) ? (c % 2 == 0 ? 0 : 2) : 0; // WALK bobs up/down each step
                     int x = c * 32 + 4;
-                    int y = row * 32 + 4;
+                    int y = row * 32 + 4 + bob;
                     g.setColor(mc);
                     g.fillRoundRect(x, y, 24, 24, 6, 6);
+
+                    if (r == 1) {
+                        // WALK: alternating leg-shuffle bars beneath the body — the visual
+                        // cue that's completely absent when WALK just reuses the IDLE frame.
+                        g.setColor(mc.darker());
+                        if (c % 2 == 0) {
+                            g.fillRect(x + 3, y + 22, 4, 6);
+                            g.fillRect(x + 15, y + 20, 4, 4);
+                        } else {
+                            g.fillRect(x + 3, y + 20, 4, 4);
+                            g.fillRect(x + 15, y + 22, 4, 6);
+                        }
+                    }
+
                     // Eyes
                     g.setColor(Color.RED);
                     g.fillRect(x + 6, y + 8, 3, 3);
@@ -623,6 +706,25 @@ public class AssetManager {
         }
         g.dispose();
         return sheet;
+    }
+
+    private static Color mobColor(MobType type) {
+        return switch (type) {
+            case CORRUPTED_DRONE -> new Color(180, 30, 40);
+            case SHADOW_CREEPER -> new Color(110, 40, 160);
+            case MAGMA_GOLEM -> new Color(220, 80, 20);
+            case VOID_STALKER -> new Color(60, 20, 100);
+            case WOODLAND_FOX -> new Color(235, 140, 60);
+            case CAVE_GLOWBAT -> new Color(95, 95, 150);
+            case EMBER_CAT -> new Color(230, 110, 40);
+            case MOSS_TURTLE_CREATURE -> new Color(80, 140, 70);
+            case SKY_CLOUDBIRD -> new Color(205, 222, 235);
+            case FIELD_RAT -> new Color(120, 100, 80);
+            case MARSH_BEETLE -> new Color(70, 110, 60);
+            case DRAGON -> new Color(150, 20, 30);
+            case PHOENIX_CREATURE -> new Color(255, 120, 30);
+            case UNICORN_CREATURE -> new Color(240, 235, 250);
+        };
     }
 
     private BufferedImage generateWeaponSheet() {
@@ -678,12 +780,14 @@ public class AssetManager {
     }
 
     private BufferedImage generateTerrainSheet() {
-        // 8 variants x 16 block types of 16x16 pixels
-        BufferedImage sheet = new BufferedImage(128, 256, BufferedImage.TYPE_INT_RGB);
+        // 8 variants x N block types of 16x16 pixels. Sized off BlockType.values().length
+        // (not a hardcoded 16) so newly added block types get their own row here too —
+        // otherwise they'd silently fall back to whatever row index%16 aliased onto.
+        BlockType[] types = BlockType.values();
+        BufferedImage sheet = new BufferedImage(128, types.length * 16, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = sheet.createGraphics();
 
-        BlockType[] types = BlockType.values();
-        for (int r = 0; r < Math.min(16, types.length); r++) {
+        for (int r = 0; r < types.length; r++) {
             BlockType b = types[r];
             for (int c = 0; c < 8; c++) {
                 int x = c * 16;

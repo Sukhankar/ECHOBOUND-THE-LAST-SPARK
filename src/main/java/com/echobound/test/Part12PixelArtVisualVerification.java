@@ -148,7 +148,7 @@ public class Part12PixelArtVisualVerification {
             assertEquals(16, tile.getWidth(), "Tile width must be 16");
             assertEquals(16, tile.getHeight(), "Tile height must be 16");
         }
-        System.out.println("  [PASS] Test 8: Major terrain tiles verified across all 14 block types");
+        System.out.println("  [PASS] Test 8: Major terrain tiles verified across all " + BlockType.values().length + " block types");
     }
 
     private static void test9_AnimationStateDefinitionsValid(AssetManager am) {

@@ -38,6 +38,14 @@ public class PetManager {
         return (activePet == PetType.SPARK_CAT) ? 1.35f : 1.0f;
     }
 
+    public float getFireDamageMultiplier() {
+        return (activePet == PetType.PHOENIX) ? 1.35f : 1.0f;
+    }
+
+    public float getSpeedMultiplier() {
+        return (activePet == PetType.UNICORN) ? 1.20f : 1.0f;
+    }
+
     public float getArmorDefenseMultiplier() {
         return (activePet == PetType.MOSS_TURTLE) ? 1.25f : 1.0f;
     }

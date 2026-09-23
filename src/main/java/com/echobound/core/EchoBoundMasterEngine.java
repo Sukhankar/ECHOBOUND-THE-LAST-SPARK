@@ -1,6 +1,7 @@
 package com.echobound.core;
 
 import com.echobound.animation.AnimationController;
+import com.echobound.animation.AnimationState;
 import com.echobound.animation.NPCVisualController;
 import com.echobound.assets.AssetManager;
 import com.echobound.audio.SoundType;
@@ -29,7 +30,9 @@ import com.echobound.ui.windows.WindowManager;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListener, MouseMotionListener, MouseWheelListener {
@@ -49,7 +52,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     private final NPCVisualController npcVisualController;
     private final AnimationViewerOverlay animationViewerOverlay;
 
-    private final Map<MobType, AnimationController> mobAnimControllers = new HashMap<>();
+    // Keyed by mob instance id, not MobType — a shared-per-type controller meant every mob of
+    // the same species fought over one animation state/timer, and (separately) nothing ever
+    // called setState() at all, so every creature stayed frozen on its IDLE pose regardless of
+    // whether it was walking, chasing, or attacking. Both are fixed together in render() below.
+    private final Map<Integer, AnimationController> mobAnimControllers = new HashMap<>();
     private boolean showAnimationViewer = false;
     private boolean showPerformanceHUD = false;
     private float lastPhysicsTimeMs = 0.0f;
@@ -162,7 +169,8 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             animationViewerOverlay.update(dt);
         }
 
-        if (state == GameState.LOADING || state == GameState.TITLE_MENU ||
+        if (state == GameState.LOADING || state == GameState.INTRO_CINEMATIC ||
+            state == GameState.TITLE_MENU ||
             state == GameState.OPTIONS_MENU || state == GameState.SAVE_SELECT_MENU) {
             menuController.update(dt);
             return;
@@ -243,7 +251,8 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         Graphics2D g = window.getBufferGraphics();
         GameState state = menuController.getCurrentState();
 
-        if (state == GameState.LOADING || state == GameState.TITLE_MENU ||
+        if (state == GameState.LOADING || state == GameState.INTRO_CINEMATIC ||
+            state == GameState.TITLE_MENU ||
             state == GameState.OPTIONS_MENU || state == GameState.SAVE_SELECT_MENU) {
             MenuUIRenderer.render(g, menuController, saveManager, settingsManager,
                                   Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
@@ -251,12 +260,34 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             return;
         }
 
+        // 0. Clear the full canvas before drawing this frame. The world/entity renderer only
+        // ever draws non-AIR blocks and live entities — sky/void areas above the terrain were
+        // never explicitly painted, so they simply kept whatever was already sitting in the
+        // buffer. That was invisible under the old single shared BufferedImage (same buffer,
+        // same stale pixels, frame after frame), but now that Window ping-pongs between two
+        // real buffers (see Window.present()) to fix the render/paint tearing, those two
+        // buffers can each be holding a DIFFERENT stale frame in the uncovered areas —
+        // e.g. two different camera positions — so as the camera pans, the gaps alternate
+        // between two different leftover images every other frame. That reads as flicker.
+        g.setColor(new Color(10, 14, 24));
+        g.fillRect(0, 0, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
+
         // 1. Render Voxel World & Traversal with Layered Equipment & Animated Weapon
         renderer.render(g, ctx.world, ctx.player, echo, ctx.dayNightCycle,
                         camX, camY, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT, Quality.HIGH,
                         ctx.equipmentManager, ctx.activeWeapon);
 
+        // 1b. Render village houses (CC0 "House Sets" pack — real downloaded structure
+        // sprites, drawn near the NPCs whose schedules already reference a home: Kael's
+        // "bunkhouse", Rowan's "hollow oak cabin"). Uses the same world-Y-to-screen lift as
+        // every other elevated thing this renderer draws, so a house sits correctly on the
+        // ground at its z-height instead of floating independent of the terrain under it.
+        renderVillageHouses(g, camX, camY);
+
         // 2. Render Living NPCs with schedule-driven animations
+        // labelBounds tracks every name/activity tag already drawn this frame so nearby
+        // NPCs never stack illegible text on top of one another (push conflicting tags up).
+        List<Rectangle> labelBounds = new ArrayList<>();
         for (NPCDefinition npc : ctx.npcManager.getAll()) {
             int nx = (int) (npc.x - camX);
             int ny = (int) (npc.y - npc.z * 0.75f - camY);
@@ -280,14 +311,19 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             g.setColor(new Color(255, 230, 140));
             FontMetrics fm = g.getFontMetrics();
             int nw = fm.stringWidth(npc.name);
-            g.drawString(npc.name, nx - nw / 2, ny - 33);
+            int nameY = placeLabel(labelBounds, nx - nw / 2, ny - 33, nw, fm);
+            g.drawString(npc.name, nx - nw / 2, nameY);
 
             if (npc.currentActivity != null && !npc.currentActivity.isEmpty()) {
                 g.setFont(new Font("Monospaced", Font.PLAIN, 8));
                 g.setColor(new Color(180, 210, 255));
                 String actStr = "[" + npc.currentActivity + "]";
-                int aw = g.getFontMetrics().stringWidth(actStr);
-                g.drawString(actStr, nx - aw / 2, ny - 42);
+                FontMetrics afm = g.getFontMetrics();
+                int aw = afm.stringWidth(actStr);
+                // Anchor to the name tag actually drawn (which may itself have been nudged),
+                // then resolve any remaining collision against every other tag on screen.
+                int actY = placeLabel(labelBounds, nx - aw / 2, nameY - 9, aw, afm);
+                g.drawString(actStr, nx - aw / 2, actY);
             }
         }
 
@@ -297,28 +333,40 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             int sx = (int) (mob.position.x - camX);
             int sy = (int) (mob.position.y - mob.position.z * 0.75f - camY);
 
+            // Legendary creatures render noticeably larger than ordinary wildlife/monsters —
+            // a dragon drawn at the same 32x32 as a field rat wouldn't read as legendary.
+            int drawSize = (mob.type == MobType.DRAGON) ? 64
+                          : (mob.type == MobType.PHOENIX_CREATURE || mob.type == MobType.UNICORN_CREATURE) ? 44
+                          : 32;
+            int half = drawSize / 2;
+
             // Ground drop shadow
             g.setColor(new Color(0, 0, 0, 75));
-            g.fillOval(sx - 8, sy - 3, 16, 6);
+            g.fillOval(sx - half / 2, sy - 3, half, 6);
 
-            // Animated Mob Sprite
-            AnimationController mobAnim = mobAnimControllers.computeIfAbsent(mob.type, assetManager::createMobAnimationController);
+            // Animated Mob Sprite — one controller per mob instance (not per species), state
+            // driven every frame from the mob's own AI state so walking/chasing/attacking
+            // actually looks different instead of every creature being locked on its IDLE pose.
+            AnimationController mobAnim = mobAnimControllers.computeIfAbsent(mob.id,
+                    id -> assetManager.createMobAnimationController(mob.type));
+            mobAnim.setState(animationStateFor(mob.state));
             mobAnim.update(0.016f);
             BufferedImage mobFrame = mobAnim.getCurrentFrame();
             if (mobFrame != null) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-                g2.drawImage(mobFrame, sx - 16, sy - 28, 32, 32, null);
+                g2.drawImage(mobFrame, sx - half, sy - drawSize + 4, drawSize, drawSize, null);
                 g2.dispose();
             }
 
             // Health bar with pixel frame
             g.setColor(new Color(20, 20, 30, 210));
-            g.fillRect(sx - 10, sy - 32, 20, 4);
+            g.fillRect(sx - 10, sy - drawSize - 4, 20, 4);
             g.setColor(new Color(220, 40, 50));
             int hpW = Math.max(0, (int) (18.0f * ((float) mob.currentHealth / mob.type.maxHealth)));
-            g.fillRect(sx - 9, sy - 31, hpW, 2);
+            g.fillRect(sx - 9, sy - drawSize - 3, hpW, 2);
         }
+        pruneStaleMobAnimControllers();
 
         // 4. Render Projectiles
         for (int i = 0; i < ctx.spellPool.getCapacity(); i++) {
@@ -364,6 +412,114 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         window.present();
     }
 
+    /**
+     * Resolves label overlap for the world-space name/activity tags drawn above NPCs.
+     * Starts at the requested baseline and, while the resulting text box intersects any
+     * tag already placed this frame, nudges it upward in small steps until it's clear
+     * (or a sane attempt limit is hit, so a crowd of NPCs can't push a tag off-screen).
+     * The chosen bounding box is recorded so later tags avoid it too.
+     */
+    private int placeLabel(List<Rectangle> labelBounds, int x, int baselineY, int textWidth, FontMetrics fm) {
+        int ascent = fm.getAscent();
+        int descent = fm.getDescent();
+        int y = baselineY;
+        Rectangle box = new Rectangle(x - 2, y - ascent, textWidth + 4, ascent + descent);
+        for (int attempts = 0; attempts < 6 && intersectsAny(labelBounds, box); attempts++) {
+            y -= (ascent + descent) + 1;
+            box.y = y - ascent;
+        }
+        labelBounds.add(box);
+        return y;
+    }
+
+    private boolean intersectsAny(List<Rectangle> boxes, Rectangle candidate) {
+        for (Rectangle b : boxes) {
+            if (b.intersects(candidate)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Taming: PetManager.tamePet(PetType) has existed since Part 3 — 5 companion types, each
+     * with a real gameplay perk (light in darkness, treasure detection, etc.) — but nothing
+     * in the live game ever called it except a debug-style [P] key that just free-unlocks
+     * the next pet in sequence with no creature involved at all. This is the actual
+     * "encounter it in the world and tame it" path the perk system never had: press the
+     * interact key near a passive/neutral wild creature (§3 wildlife — Woodland Fox, Cave
+     * Glowbat, Ember Cat, Moss Turtle, Cloudback Bird) and it joins PetManager for real.
+     */
+    private void tryTameNearestCreature() {
+        MobEntity nearest = null;
+        float nearestDist = 40.0f; // tame range, matches the NPC dialogue range closely enough
+        for (MobEntity mob : ctx.mobManager.getActiveMobs()) {
+            if (!mob.isAlive || !mob.type.isTameable()) continue;
+            float dist = (float) mob.position.distance2D(ctx.player.pos);
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearest = mob;
+            }
+        }
+        if (nearest == null) return;
+
+        com.echobound.companion.PetType tamed = nearest.type.tameableAs;
+        ctx.petManager.tamePet(tamed);
+        ctx.mobManager.removeMob(nearest);
+        ctx.floatingTextManager.spawnMessage(nearest.position.x, nearest.position.y, nearest.position.z + 20,
+                "Tamed: " + tamed.displayName + "!", new Color(120, 230, 160));
+        ctx.soundEngine.play(SoundType.CRAFT_SUCCESS);
+        windowManager.tutorialWindow.tutorialManager.completeStep(TutorialStep.TAMING);
+    }
+
+    /** name, worldX, worldY, worldZ — placed just behind/beside each NPC's own position so
+     *  the house reads as "their home" without covering the spot they actually stand on. */
+    private static final Object[][] VILLAGE_HOUSES = {
+        {"house_gabled",  85f, 118f, 4f},  // Kael's bunkhouse, near the forge
+        {"house_cabin",   22f,  95f, 3f},  // Rowan's hollow oak cabin, near the greenhouse
+        {"house_cottage", 230f, 60f, 3f},  // an extra village house for atmosphere
+    };
+
+    private void renderVillageHouses(Graphics2D g, float camX, float camY) {
+        for (Object[] house : VILLAGE_HOUSES) {
+            String name = (String) house[0];
+            float wx = (Float) house[1], wy = (Float) house[2], wz = (Float) house[3];
+            BufferedImage sprite = assetManager.getStructureSprite(name);
+            if (sprite == null) continue;
+
+            int sx = (int) (wx - camX);
+            int sy = (int) (wy - wz * 0.75f - camY);
+            if (sx < -80 || sx > Window.INTERNAL_WIDTH + 80 || sy < -80 || sy > Window.INTERNAL_HEIGHT + 80) continue;
+
+            int w = sprite.getWidth(), h = sprite.getHeight();
+            // Ground shadow, anchored at the sprite's base (feet of the walls, not its center).
+            g.setColor(new Color(0, 0, 0, 70));
+            g.fillOval(sx - w / 3, sy + h / 2 - 4, (w * 2) / 3, 8);
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            g2.drawImage(sprite, sx - w / 2, sy - h, w, h, null);
+            g2.dispose();
+        }
+    }
+
+    private static AnimationState animationStateFor(MobEntity.AIState aiState) {
+        return switch (aiState) {
+            case IDLE -> AnimationState.IDLE;
+            case WANDER, DETECT -> AnimationState.WALK;
+            case CHASE, FLEE, RETREAT -> AnimationState.RUN;
+            case ATTACK -> AnimationState.ATTACK;
+        };
+    }
+
+    /** Mobs are removed from MobManager the instant they die (see MobManager.applyDamageArea),
+     *  but their per-instance AnimationController entry would otherwise linger in this map
+     *  forever — a slow leak over a long session with lots of creature turnover. */
+    private void pruneStaleMobAnimControllers() {
+        if (mobAnimControllers.isEmpty()) return;
+        java.util.Set<Integer> liveIds = new java.util.HashSet<>();
+        for (MobEntity mob : ctx.mobManager.getActiveMobs()) liveIds.add(mob.id);
+        mobAnimControllers.keySet().removeIf(id -> !liveIds.contains(id));
+    }
+
     private void renderDialogueBox(Graphics2D g, NPCDefinition npc) {
         int boxW = 460;
         int boxH = 68;
@@ -404,7 +560,8 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
         g.setFont(new Font("Monospaced", Font.ITALIC, 9));
         g.setColor(new Color(150, 160, 190));
-        g.drawString("[F / ESC] Close Dialogue", textX, boxY + 56);
+        String hint = npc.isMerchant() ? "[F / ESC] Close    [B] Browse Wares" : "[F / ESC] Close Dialogue";
+        g.drawString(hint, textX, boxY + 56);
     }
 
     private void renderPauseMenu(Graphics2D g) {
@@ -458,6 +615,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         }
 
         GameState state = menuController.getCurrentState();
+
+        if (state == GameState.INTRO_CINEMATIC) {
+            menuController.skipCinematic();
+            return;
+        }
 
         if (state == GameState.TITLE_MENU || state == GameState.OPTIONS_MENU || state == GameState.SAVE_SELECT_MENU) {
             if (code == KeyEvent.VK_UP) menuController.moveCursorUp();
@@ -551,19 +713,34 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
                 windowManager.tutorialWindow.tutorialManager.completeStep(TutorialStep.MAGIC);
                 ctx.castDualSpell(MagicSchool.TIDE, MagicSchool.VOLT, new Vec3(ctx.player.facingDirX, ctx.player.facingDirY, 0));
             }
-            // Talk to NPC
+            // Talk to NPC, or — if none are close — tame a nearby wild creature instead.
+            // One context-sensitive "interact" key rather than a second dedicated binding,
+            // matching how [F] already works for dialogue.
             if (code == KeyEvent.VK_F) {
                 if (activeDialogueNPC != null) {
                     activeDialogueNPC = null;
                 } else {
+                    NPCDefinition nearestNpc = null;
                     for (NPCDefinition npc : ctx.npcManager.getAll()) {
                         float dist = (float) Math.hypot(npc.x - ctx.player.pos.x, npc.y - ctx.player.pos.y);
                         if (dist < 48.0f) {
-                            activeDialogueNPC = npc;
+                            nearestNpc = npc;
                             break;
                         }
                     }
+                    if (nearestNpc != null) {
+                        activeDialogueNPC = nearestNpc;
+                    } else {
+                        tryTameNearestCreature();
+                    }
                 }
+            }
+            // Shop with the NPC currently in dialogue, if they sell anything — see
+            // NPCManager for who's a merchant (Kael/Rowan/Lyra all are, each with a
+            // themed inventory) and ShopWindow for the actual buy transaction.
+            if (code == KeyEvent.VK_B && activeDialogueNPC != null && activeDialogueNPC.isMerchant()) {
+                windowManager.openShop(activeDialogueNPC);
+                activeDialogueNPC = null;
             }
         }
     }
@@ -580,6 +757,10 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     @Override public void mouseClicked(MouseEvent e) {}
     @Override
     public void mousePressed(MouseEvent e) {
+        if (menuController.getCurrentState() == GameState.INTRO_CINEMATIC) {
+            menuController.skipCinematic();
+            return;
+        }
         if (e.getButton() == MouseEvent.BUTTON1) leftClickHeld = true;
         if (e.getButton() == MouseEvent.BUTTON3) rightClickJustPressed = true;
     }

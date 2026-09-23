@@ -6,6 +6,12 @@ public class SandboxHUD {
     private final Font hudFont = new Font(Font.MONOSPACED, Font.BOLD, 10);
     private final Font titleFont = new Font(Font.SANS_SERIF, Font.BOLD, 11);
 
+    // Bottom-of-screen layout is stacked from these two reserved bands, bottom-up, so the
+    // hotbar and the control-hints strip can never overlap regardless of platform font metrics:
+    // [ active-item label ] [ hotbar slots ] [ control hints ]  <- bottom edge of screen
+    private static final int HINT_BAR_HEIGHT = 13;
+    private static final int SLOT_SIZE = 22;
+
     public void render(Graphics2D g, PlayerSandboxEntity player, EchoSandboxClone echo,
                        DayNightCycle dayNight, int viewW, int viewH) {
         g.setFont(hudFont);
@@ -69,14 +75,16 @@ public class SandboxHUD {
 
     private void renderTimeAndWeather(Graphics2D g, DayNightCycle dayNight, int x, int y) {
         g.setColor(new Color(12, 16, 24, 210));
-        g.fillRoundRect(x, y, 160, 28, 4, 4);
+        g.fillRoundRect(x, y, 160, 38, 4, 4);
         g.setColor(new Color(0, 240, 255, 140));
-        g.drawRoundRect(x, y, 160, 28, 4, 4);
+        g.drawRoundRect(x, y, 160, 38, 4, 4);
 
         g.setColor(Color.WHITE);
         g.drawString(dayNight.getFormattedTime(), x + 6, y + 12);
         g.setColor(new Color(255, 210, 80));
         g.drawString("Weather: " + dayNight.getWeather().displayName, x + 6, y + 24);
+        g.setColor(new Color(150, 230, 170));
+        g.drawString("Season: " + dayNight.getSeason().displayName, x + 6, y + 36);
     }
 
     private void renderEchoStatus(Graphics2D g, EchoSandboxClone echo, int viewW) {
@@ -111,11 +119,12 @@ public class SandboxHUD {
     }
 
     private void renderQuickSlots(Graphics2D g, Inventory inv, int viewW, int viewH) {
-        int slotSize = 22;
+        int slotSize = SLOT_SIZE;
         int spacing = 3;
         int totalW = Inventory.QUICK_SLOT_COUNT * slotSize + (Inventory.QUICK_SLOT_COUNT - 1) * spacing;
         int startX = (viewW - totalW) / 2;
-        int startY = viewH - 46;
+        // Sit directly above the reserved control-hints band, with a couple px of breathing room.
+        int startY = viewH - HINT_BAR_HEIGHT - slotSize - 2;
 
         for (int i = 0; i < Inventory.QUICK_SLOT_COUNT; i++) {
             int sx = startX + i * (slotSize + spacing);
@@ -166,10 +175,25 @@ public class SandboxHUD {
     }
 
     private void renderControlHints(Graphics2D g, int viewW, int viewH) {
-        String hints = "[WASD]: Move | [SPACE]: Jump/Glide | [C]: Dash | [L-CLICK/F]: Mine | [R-CLICK/G]: Place | [1-8]: Quick Slot | [T]: Weather";
-        int hw = g.getFontMetrics().stringWidth(hints);
+        String hints = "[WASD] Move  [SPACE] Jump/Glide  [C] Dash  [F] Mine  [G] Place  [1-8] Quick Slot  [T] Weather";
+
+        // The full hint string is comfortably wider than the 640px internal canvas at a
+        // normal HUD font size, so pick the largest size that still fits rather than letting
+        // it overflow past the screen edges (which used to visually bleed into the hotbar).
+        int margin = 8;
+        int fontSize = 9;
+        FontMetrics fm;
+        int hw;
+        do {
+            g.setFont(new Font(Font.MONOSPACED, Font.PLAIN, fontSize));
+            fm = g.getFontMetrics();
+            hw = fm.stringWidth(hints);
+            fontSize--;
+        } while (hw > viewW - margin && fontSize >= 5);
+
         int sx = (viewW - hw) / 2;
-        int sy = viewH - 6;
+        // Baseline sits inside the reserved bottom band, below the hotbar it never touches.
+        int sy = viewH - (HINT_BAR_HEIGHT - fm.getAscent()) - 1;
 
         g.setColor(new Color(140, 160, 185));
         g.drawString(hints, sx, sy);

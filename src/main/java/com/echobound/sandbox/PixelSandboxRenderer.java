@@ -170,16 +170,18 @@ public class PixelSandboxRenderer {
     }
 
     private void renderPlayerEntity(Graphics2D g, PlayerSandboxEntity p, float camX, float camY, boolean isEcho) {
-        // Ground drop shadow
-        int shadowX = (int) (p.pos.x - camX);
-        int shadowY = (int) (p.pos.y - camY);
-
-        g.setColor(new Color(0, 0, 0, 90));
-        g.fillOval(shadowX - 6, shadowY - 3, 12, 6);
-
-        // Screen position elevated by Z
+        // Screen position elevated by Z — every other elevated thing this renderer draws
+        // (blocks, mobs, NPCs) lifts its shadow by this same amount so it stays under the
+        // sprite's feet; the player's shadow previously didn't, and since pos.z is almost
+        // never 0 here (it's absolute world height — terrain alone sits at z=2..6, not a
+        // jump-height offset), the shadow was permanently anchored several pixels below
+        // the sprite. That's what made the character look like it was levitating.
         int px = (int) (p.pos.x - camX);
         int py = (int) (p.pos.y - p.pos.z * (Z_ELEVATION_PX / WorldChunk.BLOCK_PIXEL_SIZE) - camY);
+
+        // Ground drop shadow — anchored to the sprite's own lifted position, not pos.y alone.
+        g.setColor(new Color(0, 0, 0, 90));
+        g.fillOval(px - 6, py - 3, 12, 6);
 
         if (isEcho) {
             // Echo Clone: Spectral cyan animation duplicate
@@ -239,6 +241,15 @@ public class PixelSandboxRenderer {
 
     private void renderAmbientLighting(Graphics2D g, PlayerSandboxEntity player, SandboxWorld world,
                                        DayNightCycle dayNight, int viewW, int viewH, float camX, float camY) {
+        // Seasonal color wash — applied regardless of time/weather (unlike the darkness
+        // overlay below, which only kicks in at night or in bad weather) so Autumn/Winter/
+        // Spring read as an atmosphere shift even in broad clear daylight.
+        Color wash = dayNight.getSeason().ambientWash;
+        if (wash.getAlpha() > 0) {
+            g.setColor(wash);
+            g.fillRect(0, 0, viewW, viewH);
+        }
+
         if (!dayNight.isNight() && dayNight.getWeather() == WeatherType.CLEAR) {
             return;
         }

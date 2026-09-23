@@ -241,6 +241,17 @@ public class InventoryEquipmentWindow {
             g.drawString("[" + (s + 1) + "] " + (r != null ? r.prefix : "-"), rx + 2, ry + 9);
         }
 
+        // Tamed Pets Summary (see PetManager — populated by taming wildlife with [F], not
+        // just the old [P] debug-cycle key)
+        int petsY = runeY + 22;
+        g.setFont(new Font("Monospaced", Font.BOLD, 8));
+        g.setColor(new Color(150, 230, 170));
+        String petLine = "PETS: " + ctx.petManager.getTamedCount() + "/" + com.echobound.companion.PetType.values().length + " tamed";
+        if (ctx.petManager.getActivePet() != null) {
+            petLine += "  |  Active: " + ctx.petManager.getActivePet().displayName + " ([P] cycle)";
+        }
+        g.drawString(petLine, eqStartX, petsY);
+
         // Bottom Stats & Controls Bar
         int statsY = startY + 120;
         g.setColor(new Color(20, 30, 48));

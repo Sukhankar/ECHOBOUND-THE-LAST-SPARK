@@ -70,6 +70,16 @@ public class SandboxVerification {
         SandboxWorld world = new SandboxWorld(1234L);
         PlayerSandboxEntity player = new PlayerSandboxEntity(16, 16, 48);
 
+        // Clear the raycast path to AIR first — this used to just rely on chunk (0,0)'s
+        // ambient generated terrain happening to be low/open enough at these coordinates,
+        // which broke the moment the terrain noise algorithm changed (sin/cos -> Perlin;
+        // see WorldChunk). Explicitly clearing means this test no longer depends on
+        // whatever shape the world generator happens to produce here.
+        for (int cx = 1; cx <= 3; cx++) {
+            for (int cz = 0; cz <= 4; cz++) {
+                world.setBlock(cx, 1, cz, BlockType.AIR);
+            }
+        }
         // Place floor under player and test wood block directly adjacent in front of player
         world.setBlock(1, 1, 2, BlockType.STONE);
         world.setBlock(2, 1, 3, BlockType.WOOD_LOG);
@@ -96,6 +106,13 @@ public class SandboxVerification {
         SandboxWorld world = new SandboxWorld(1234L);
         PlayerSandboxEntity player = new PlayerSandboxEntity(0, 16, 48);
 
+        // Clear the raycast path first — see the identical fix/comment in
+        // testMiningAndInventoryGathering above.
+        for (int cx = 0; cx <= 3; cx++) {
+            for (int cz = 0; cz <= 4; cz++) {
+                world.setBlock(cx, 1, cz, BlockType.AIR);
+            }
+        }
         // Create solid floor for player, empty slot at (1, 1, 3), and target at (2, 1, 3)
         world.setBlock(0, 1, 2, BlockType.STONE);
         world.setBlock(2, 1, 3, BlockType.STONE);

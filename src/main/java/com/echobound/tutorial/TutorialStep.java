@@ -20,6 +20,10 @@ public enum TutorialStep {
     ECHO(
         "5. Echo Clone Replication",
         "Press [X] to record and replay your movement loop to activate dual pressure plates."
+    ),
+    TAMING(
+        "6. Wildlife & Taming",
+        "Press [F] near a passive creature (fox, glowbat, cat, turtle, bird) to tame it as a companion."
     );
 
     public final String title;

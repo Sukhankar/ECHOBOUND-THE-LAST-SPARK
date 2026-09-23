@@ -1,5 +1,7 @@
 package com.echobound.assets;
 
+import com.echobound.sandbox.BlockType;
+
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -15,15 +17,13 @@ import java.util.List;
  * and writes them to assets/processed/.  Falls back gracefully when source files are
  * missing so the game can always start.
  *
- * Source packs consumed:
- *  - DezrasDragons / itch.io  →  assets/external/characters/ninja_frames/
- *  - Kenney Micro Roguelike   →  assets/external/characters/kenney_roguelike_characters.png
- *  - Kenney Platformer Pack   →  assets/external/tiles/kenney_platformer_tiles.png
- *  - Kenney Tiny Dungeon      →  assets/external/mobs/kenney_tiny_dungeon_tiles.png
- *  - Kenney Micro Items       →  assets/external/items/kenney_micro_items.png
- *  - Kenney UI Tiles          →  assets/external/ui/tile_0000.png … tile_0090.png
- *
- * All sources are CC0 (Kenney) or CC-BY (DezrasDragons with credit in THIRD_PARTY_ASSETS.md).
+ * Source packs consumed (all CC0 — no attribution required):
+ *  - Kenney "Roguelike/RPG Pack" (CC0 mirror, opengameart.org/content/roguelikerpg-pack-1700-tiles)
+ *    →  assets/external/tiles/roguelike_sheet.png — terrain (grass/dirt/stone/sand/water),
+ *       trees, flowers, berries, brick/plank floors. 16×16 tiles, 1px margin (17px stride).
+ *  - Other slots below (characters/mobs/items/weapons/tools/ui) fall back gracefully to the
+ *    legacy procedurally-generated tier (see AssetManager) when their source file is absent —
+ *    that is expected right now, not a bug; only terrain has been re-sourced so far.
  */
 public class RealPixelAssetPipeline {
 
@@ -285,47 +285,103 @@ public class RealPixelAssetPipeline {
         }
     }
 
-    // ── Step 4: Terrain Sheet from Kenney platformer tiles (128×256) ─────────
+    // ── Step 4: Terrain Sheet from the CC0 Roguelike/RPG pack (128×N) ─────────
+
+    /**
+     * Source is Kenney's classic "Roguelike/RPG Pack" (mirrored CC0 on opengameart.org),
+     * a single 968×526 sheet: 16×16 tile content on a 17px grid stride (1px margin between
+     * tiles — see Spritesheet/spritesheetInfo.txt in the pack). Coordinates below were
+     * picked by hand off a rendered, labeled contact sheet of the actual grid (col,row),
+     * not guessed — each one was visually confirmed to be the tile it's used for. Types with
+     * no good real match in this pack (CACTUS, SNOW, ore glows) reuse the closest tile and
+     * get a translucent tint, the same technique buildMobSheet() uses for mob archetypes.
+     */
+    private static final int ROGUE_TILE   = 16;
+    private static final int ROGUE_STRIDE = 17; // 16px content + 1px margin
+
+    private static int[][] terrainSourceTiles(BlockType type) {
+        return switch (type) {
+            case GRASS       -> new int[][]{{5, 0}, {5, 1}};
+            case DIRT        -> new int[][]{{6, 0}, {6, 1}};
+            case STONE       -> new int[][]{{7, 0}, {7, 1}};
+            case SPARK_ORE   -> new int[][]{{9, 1}};
+            case CRYSTAL_NODE-> new int[][]{{9, 1}};
+            case WOOD_LOG    -> new int[][]{{12, 11}, {13, 11}, {14, 11}};
+            case LEAVES      -> new int[][]{{12, 9}, {13, 9}, {14, 9}, {12, 10}, {13, 10}, {14, 10}};
+            case WATER       -> new int[][]{{0, 0}, {1, 0}, {0, 1}, {1, 1}};
+            case WOOD_PLANKS -> new int[][]{{8, 2}, {8, 3}, {8, 4}};
+            case STONE_BRICK -> new int[][]{{6, 2}, {7, 2}};
+            case SPARK_LAMP  -> new int[][]{{14, 7}, {13, 7}};
+            case WORKBENCH   -> new int[][]{{8, 2}};
+            case BARRICADE   -> new int[][]{{6, 0}};
+            case SAND        -> new int[][]{{8, 0}, {8, 1}};
+            case SNOW        -> new int[][]{{7, 0}, {7, 1}};
+            case TALL_GRASS  -> new int[][]{{5, 0}, {5, 1}};
+            // Real flower-on-grass and berry-on-grass art — no tint needed, these are direct hits.
+            case WILDFLOWER  -> new int[][]{{0, 9}, {1, 9}, {2, 9}, {3, 9}, {4, 9}};
+            case BERRY_BUSH  -> new int[][]{{0, 6}, {1, 6}, {2, 6}, {3, 6}, {4, 6}, {0, 7}, {1, 7}};
+            case BOULDER     -> new int[][]{{5, 13}, {7, 13}, {5, 14}, {7, 14}};
+            case CACTUS      -> new int[][]{{8, 0}};
+            case RUINS_BRICK -> new int[][]{{5, 2}, {6, 2}};
+            default          -> new int[][]{{0, 0}}; // AIR / unused — never actually rendered
+        };
+    }
+
+    /**
+     * Translucent color wash applied over a reused ground tile for block types the source
+     * pack has no dedicated art for. Alpha is kept low enough that the underlying tile's
+     * shading/texture still reads through — this is a tint, not a flat fill.
+     */
+    private static Color terrainTint(BlockType type) {
+        return switch (type) {
+            case SPARK_ORE    -> new Color(0, 200, 230, 110);
+            case CRYSTAL_NODE -> new Color(190, 80, 230, 120);
+            case SPARK_LAMP   -> new Color(0, 220, 255, 70);
+            case WORKBENCH    -> new Color(230, 175, 50, 90);
+            case BARRICADE    -> new Color(140, 70, 40, 110);
+            case SNOW         -> new Color(255, 255, 255, 165);
+            case TALL_GRASS   -> new Color(70, 160, 70, 80);
+            case BOULDER      -> new Color(130, 128, 122, 90);
+            case CACTUS       -> new Color(50, 150, 90, 150);
+            default           -> null;
+        };
+    }
 
     private void buildTerrainSheet() {
-        File src = new File(externalDir, "tiles/kenney_platformer_tiles.png");
+        File src = new File(externalDir, "tiles/roguelike_sheet.png");
         if (!src.exists()) {
-            log("[SKIP] terrain_sheet — kenney_platformer_tiles.png not found");
+            log("[SKIP] terrain_sheet — roguelike_sheet.png not found");
             return;
         }
         try {
             BufferedImage source = ImageIO.read(src);
             if (source == null) { log("[FAIL] terrain_sheet — unreadable"); return; }
 
-            // Kenney platformer: 16×16 tiles
-            int srcTileW = 16, srcTileH = 16;
-            int srcCols  = source.getWidth()  / srcTileW;
-            int srcRows  = source.getHeight() / srcTileH;
-            if (srcCols == 0 || srcRows == 0) { log("[FAIL] terrain_sheet — too small"); return; }
-
-            // Build 8 cols × 16 rows at 16×16 — map to BlockType ordinals
-            // 16 block types × 8 variants
-            BufferedImage terrainSheet = new BufferedImage(128, 256, BufferedImage.TYPE_INT_RGB);
+            // One row per BlockType ordinal, 8 variant columns each. Sized off
+            // BlockType.values().length (not a hardcoded constant) so adding new block types
+            // automatically gets its own row instead of aliasing an existing one.
+            BlockType[] blockTypes = BlockType.values();
+            int sheetH = blockTypes.length * TILE_SIZE;
+            BufferedImage terrainSheet = new BufferedImage(128, sheetH, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = terrainSheet.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-            // Fill background (non-transparent)
-            g.setColor(new Color(20, 20, 30));
-            g.fillRect(0, 0, 128, 256);
+            for (int row = 0; row < blockTypes.length; row++) {
+                BlockType type = blockTypes[row];
+                int[][] coords = terrainSourceTiles(type);
+                Color tint = terrainTint(type);
 
-            for (int blockRow = 0; blockRow < 16; blockRow++) {
                 for (int col = 0; col < 8; col++) {
-                    // Cycle through source tiles — offset by block type
-                    int srcCol = (col + blockRow * 2) % srcCols;
-                    int srcRow = blockRow % srcRows;
-                    if (srcRow >= srcRows) srcRow = srcRows - 1;
-
+                    int[] rc = coords[col % coords.length];
                     try {
                         BufferedImage tile = source.getSubimage(
-                            srcCol * srcTileW, srcRow * srcTileH,
-                            srcTileW, srcTileH);
-                        g.drawImage(tile, col * TILE_SIZE, blockRow * TILE_SIZE,
-                                    TILE_SIZE, TILE_SIZE, null);
+                            rc[0] * ROGUE_STRIDE, rc[1] * ROGUE_STRIDE, ROGUE_TILE, ROGUE_TILE);
+                        int dx = col * TILE_SIZE, dy = row * TILE_SIZE;
+                        g.drawImage(tile, dx, dy, TILE_SIZE, TILE_SIZE, null);
+                        if (tint != null) {
+                            g.setColor(tint);
+                            g.fillRect(dx, dy, TILE_SIZE, TILE_SIZE);
+                        }
                     } catch (Exception ignored) {}
                 }
             }
@@ -382,7 +438,9 @@ public class RealPixelAssetPipeline {
             BufferedImage source = ImageIO.read(src);
             if (source == null) return;
 
-            int srcW = 16, srcH = 16;
+            // Source grid is 18×18 (see PLATFORMER_SRC_TILE) — using 16 here previously sliced
+            // across true tile boundaries and smeared adjacent art together.
+            int srcW = 18, srcH = 18; // dead path: source file no longer exists, kept only for graceful SKIP
             int srcCols = source.getWidth() / srcW;
             // Pull 12 "weapon-like" tiles from the platformer sheet and scale to 24×24
             BufferedImage weaponSheet = new BufferedImage(288, WEAPON_H, BufferedImage.TYPE_INT_ARGB);
@@ -415,7 +473,8 @@ public class RealPixelAssetPipeline {
             BufferedImage source = ImageIO.read(src);
             if (source == null) return;
 
-            int srcW = 16, srcH = 16;
+            // Source grid is 18×18 (see PLATFORMER_SRC_TILE), not 16×16.
+            int srcW = 18, srcH = 18; // dead path: source file no longer exists, kept only for graceful SKIP
             int srcCols = source.getWidth() / srcW;
             BufferedImage toolSheet = new BufferedImage(160, TILE_SIZE, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = toolSheet.createGraphics();

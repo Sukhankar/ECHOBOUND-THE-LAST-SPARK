@@ -110,12 +110,17 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     public synchronized void start() {
         if (running) return;
         running = true;
+        // Only reached by the real play entry point (Main.java) — never by the test harnesses,
+        // which drive tick()/render() directly without calling start() — so looping this 3-minute
+        // track never runs during the automated regression suite.
+        ctx.soundEngine.playBackgroundMusic();
         gameThread = new Thread(this, "EchoBound-MasterEngine");
         gameThread.start();
     }
 
     public synchronized void stop() {
         running = false;
+        ctx.soundEngine.stopMusic();
     }
 
     @Override

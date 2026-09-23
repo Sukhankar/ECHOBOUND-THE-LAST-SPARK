@@ -34,19 +34,36 @@ public class SoundEngine {
         SAMPLE_PATHS.put(SoundType.ECHO_REPLAY, "audio/interface/interface2.wav");
     }
 
+    /** Looping background music track — real recorded CC0 track, not procedural. */
+    private static final String BGM_PATH = "audio/music/conductors_last_stand.wav";
+
     private final Map<SoundType, byte[]> soundCache = new EnumMap<>(SoundType.class);
     private final Map<SoundType, File> sampleFiles = new EnumMap<>(SoundType.class);
-    private final ExecutorService soundPool = Executors.newFixedThreadPool(4);
+    // Daemon threads: Executors.newFixedThreadPool's default factory creates non-daemon
+    // threads, so any SoundEngine built (directly or via UnifiedGameContext) and never
+    // explicitly shutdown() — e.g. a test harness that constructs a context and exits —
+    // leaves this pool's threads parked in getTask() forever, silently hanging the JVM at
+    // exit long after every assertion has already passed and printed. Daemon threads let
+    // the JVM exit regardless; shutdown() is still called where callers do clean up.
+    private final ExecutorService soundPool = Executors.newFixedThreadPool(4, r -> {
+        Thread t = new Thread(r, "SoundEngine-worker");
+        t.setDaemon(true);
+        return t;
+    });
+    private final File assetsDir;
     private boolean soundEnabled = true;
     private float masterVolume = 1.0f;
+    private float musicVolume = 0.5f;
     private int totalSoundsPlayed = 0;
     private int realSamplesLoaded = 0;
+    private Clip musicClip;
 
     public SoundEngine() {
         this(new File("assets"));
     }
 
     public SoundEngine(File assetsDir) {
+        this.assetsDir = assetsDir;
         precacheAllSounds();
         resolveSampleFiles(assetsDir);
     }
@@ -129,6 +146,50 @@ public class SoundEngine {
         }
     }
 
+    /** Starts the game's looping background music track (real recorded CC0 audio, not
+     *  procedural). No-op if the file is missing or an audio line can't be opened — same
+     *  graceful-degradation policy as playSampleFile(). Safe to call more than once; a
+     *  second call restarts the loop rather than stacking a second Clip. */
+    public synchronized void playBackgroundMusic() {
+        if (!soundEnabled) return;
+        stopMusic();
+        File file = new File(assetsDir, BGM_PATH);
+        if (!file.isFile()) return;
+        try (AudioInputStream in = AudioSystem.getAudioInputStream(file)) {
+            musicClip = AudioSystem.getClip();
+            musicClip.open(in);
+            applyMusicVolume();
+            musicClip.loop(Clip.LOOP_CONTINUOUSLY);
+        } catch (Exception ignored) {
+            musicClip = null;
+        }
+    }
+
+    public synchronized void stopMusic() {
+        if (musicClip != null) {
+            musicClip.stop();
+            musicClip.close();
+            musicClip = null;
+        }
+    }
+
+    public void setMusicVolume(float volume) {
+        this.musicVolume = Math.max(0.0f, Math.min(1.0f, volume));
+        applyMusicVolume();
+    }
+
+    public float getMusicVolume() {
+        return musicVolume;
+    }
+
+    private void applyMusicVolume() {
+        if (musicClip == null || !musicClip.isControlSupported(FloatControl.Type.MASTER_GAIN)) return;
+        FloatControl gain = (FloatControl) musicClip.getControl(FloatControl.Type.MASTER_GAIN);
+        float clamped = Math.max(0.0001f, musicVolume);
+        gain.setValue(Math.max(gain.getMinimum(),
+                Math.min(gain.getMaximum(), (float) (20 * Math.log10(clamped)))));
+    }
+
     public void setSoundEnabled(boolean enabled) {
         this.soundEnabled = enabled;
     }
@@ -154,6 +215,7 @@ public class SoundEngine {
     }
 
     public void shutdown() {
+        stopMusic();
         soundPool.shutdown();
     }
 }

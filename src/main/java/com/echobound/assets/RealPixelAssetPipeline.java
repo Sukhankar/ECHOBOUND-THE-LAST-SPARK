@@ -450,70 +450,84 @@ public class RealPixelAssetPipeline {
 
     // ── Step 5: Item Sheet from Kenney micro items (256×16) ──────────────────
 
+    /**
+     * Source for both item and weapon icons is the same CC0 "Hero Spritesheets (Ars Notoria)"
+     * pack already used for Rin (opengameart.org/content/hero-spritesheets-ars-notoria, by
+     * Balmer) — its assets/icons/ folder ships real 16×16 icons for potions, rings, books,
+     * swords and staffs, copied wholesale into assets/external/items/. Real icon art, not
+     * placeholder swatches; unlike the Rin/NPC sheets these already carry proper PNG alpha
+     * (indexed color + tRNS), no color-key transparency fix needed.
+     */
+    private static final String[] ITEM_ICON_FILES = {
+        "potionHealth.png", "potionHealthBig.png", "potionMana.png", "potionManaBig.png",
+        "ring-01.png", "ring-02.png", "ring-03.png", "ring-04.png",
+        "book1.png", "book2.png", "book3.png", "book4.png",
+        "statSTRPotion.png", "statDEFPotion.png", "statSPDPotion.png", "statCONPotion.png",
+    };
+
     private void buildItemSheet() {
-        File src = new File(externalDir, "items/kenney_micro_items.png");
-        if (!src.exists()) {
-            log("[SKIP] item_sheet — kenney_micro_items.png not found");
+        File dir = new File(externalDir, "items");
+        if (!dir.isDirectory()) {
+            log("[SKIP] item_sheet — items directory not found");
             return;
         }
-        try {
-            BufferedImage source = ImageIO.read(src);
-            if (source == null) { log("[FAIL] item_sheet — unreadable"); return; }
+        BufferedImage itemSheet = new BufferedImage(256, ITEM_SIZE, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = itemSheet.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-            // Scale/copy source as item sheet (standardize to 256×16, 16-item strip)
-            int srcTileW = Math.max(1, source.getWidth() / 16);
-            int srcTileH = source.getHeight();
-            BufferedImage itemSheet = new BufferedImage(256, ITEM_SIZE, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = itemSheet.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-
-            int srcCols = source.getWidth() / srcTileW;
-            for (int i = 0; i < 16; i++) {
-                int srcCol = i % Math.max(1, srcCols);
-                try {
-                    BufferedImage tile = source.getSubimage(srcCol * srcTileW, 0, srcTileW, srcTileH);
-                    g.drawImage(tile, i * ITEM_SIZE, 0, ITEM_SIZE, ITEM_SIZE, null);
-                } catch (Exception ignored) {}
-            }
-            g.dispose();
+        int placed = 0;
+        for (int i = 0; i < ITEM_ICON_FILES.length; i++) {
+            File f = new File(dir, ITEM_ICON_FILES[i]);
+            if (!f.exists()) continue;
+            try {
+                BufferedImage icon = ImageIO.read(f);
+                if (icon == null) continue;
+                g.drawImage(icon, i * ITEM_SIZE, 0, ITEM_SIZE, ITEM_SIZE, null);
+                placed++;
+            } catch (IOException ignored) {}
+        }
+        g.dispose();
+        if (placed > 0) {
             write(itemSheet, new File(processedDir, "items/item_sheet.png"), "item_sheet");
-        } catch (IOException e) {
-            log("[FAIL] item_sheet — " + e.getMessage());
+        } else {
+            log("[SKIP] item_sheet — no icon files could be loaded");
         }
     }
 
-    // ── Step 6: Weapon Sheet enhanced from Kenney platformer (288×24) ────────
+    // ── Step 6: Weapon Sheet from Ars Notoria sword/staff icons (288×24) ─────
+
+    private static final String[] WEAPON_ICON_FILES = {
+        "sword1.png", "sword2.png", "sword3.png", "sword4.png",
+        "sword5.png", "sword6.png", "sword7.png", "sword8.png",
+        "staff1.png", "staff2.png", "staff3.png", "staff4.png",
+    };
 
     private void buildWeaponSheet() {
-        File src = new File(externalDir, "tiles/kenney_platformer_tiles.png");
-        if (!src.exists()) {
-            log("[SKIP] weapon_sheet — source not found");
+        File dir = new File(externalDir, "items");
+        if (!dir.isDirectory()) {
+            log("[SKIP] weapon_sheet — items directory not found");
             return;
         }
-        try {
-            BufferedImage source = ImageIO.read(src);
-            if (source == null) return;
+        BufferedImage weaponSheet = new BufferedImage(288, WEAPON_H, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = weaponSheet.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-            // Source grid is 18×18 (see PLATFORMER_SRC_TILE) — using 16 here previously sliced
-            // across true tile boundaries and smeared adjacent art together.
-            int srcW = 18, srcH = 18; // dead path: source file no longer exists, kept only for graceful SKIP
-            int srcCols = source.getWidth() / srcW;
-            // Pull 12 "weapon-like" tiles from the platformer sheet and scale to 24×24
-            BufferedImage weaponSheet = new BufferedImage(288, WEAPON_H, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = weaponSheet.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-
-            for (int i = 0; i < 12; i++) {
-                int srcCol = (i * 3) % Math.max(1, srcCols);
-                try {
-                    BufferedImage tile = source.getSubimage(srcCol * srcW, 0, srcW, srcH);
-                    g.drawImage(tile, i * WEAPON_W, 0, WEAPON_W, WEAPON_H, null);
-                } catch (Exception ignored) {}
-            }
-            g.dispose();
+        int placed = 0;
+        for (int i = 0; i < WEAPON_ICON_FILES.length; i++) {
+            File f = new File(dir, WEAPON_ICON_FILES[i]);
+            if (!f.exists()) continue;
+            try {
+                BufferedImage icon = ImageIO.read(f);
+                if (icon == null) continue;
+                g.drawImage(icon, i * WEAPON_W, 0, WEAPON_W, WEAPON_H, null);
+                placed++;
+            } catch (IOException ignored) {}
+        }
+        g.dispose();
+        if (placed > 0) {
             write(weaponSheet, new File(processedDir, "weapons/weapon_sheet.png"), "weapon_sheet");
-        } catch (IOException e) {
-            log("[FAIL] weapon_sheet — " + e.getMessage());
+        } else {
+            log("[SKIP] weapon_sheet — no icon files could be loaded");
         }
     }
 

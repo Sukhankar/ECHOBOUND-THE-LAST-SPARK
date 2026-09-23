@@ -637,6 +637,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             if (code == KeyEvent.VK_RIGHT) menuController.adjustOptionRight();
             if (code == KeyEvent.VK_ENTER || code == KeyEvent.VK_SPACE) {
                 boolean valid = menuController.selectCurrent();
+                if (menuController.isExitRequested()) {
+                    stop();
+                    System.exit(0);
+                    return;
+                }
                 if (valid && menuController.getCurrentState() == GameState.PLAYING) {
                     // Start or resume game
                     int slot = saveManager.getMostRecentSlot();

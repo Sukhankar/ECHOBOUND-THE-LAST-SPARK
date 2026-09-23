@@ -33,6 +33,15 @@ public class TitleMenuController {
     private int titleCursor = 0;
     private int optionsCursor = 0;
     private int saveSlotCursor = 0;
+    // selectCurrent() returning false was previously indistinguishable from "invalid
+    // selection, do nothing" — EchoBoundMasterEngine's key handler only ever checked the
+    // true/PLAYING case, so choosing "Exit to Desktop" silently did nothing at all. This
+    // flag lets the caller tell the two apart and actually terminate the app.
+    private boolean exitRequested = false;
+
+    public boolean isExitRequested() {
+        return exitRequested;
+    }
 
     private final SaveManager saveManager;
     private final SettingsManager settingsManager;
@@ -180,6 +189,7 @@ public class TitleMenuController {
                     optionsCursor = 0;
                 }
                 case EXIT -> {
+                    exitRequested = true;
                     return false;
                 }
             }

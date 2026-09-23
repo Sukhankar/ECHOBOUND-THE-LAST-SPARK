@@ -1,6 +1,7 @@
 package com.echobound.sandbox;
 
 import java.awt.*;
+import java.awt.image.BufferedImage;
 
 public class SandboxHUD {
     private final Font hudFont = new Font(Font.MONOSPACED, Font.BOLD, 10);
@@ -11,6 +12,19 @@ public class SandboxHUD {
     // [ active-item label ] [ hotbar slots ] [ control hints ]  <- bottom edge of screen
     private static final int HINT_BAR_HEIGHT = 13;
     private static final int SLOT_SIZE = 22;
+
+    // Real CC0 heart art (see RealPixelAssetPipeline.buildHeartIcon()) — optional so this
+    // class still works, drawing the old procedural heart shape, for any caller that
+    // doesn't have an AssetManager on hand (e.g. the legacy SandboxGameEngine path).
+    private final BufferedImage heartIcon;
+
+    public SandboxHUD() {
+        this(null);
+    }
+
+    public SandboxHUD(BufferedImage heartIcon) {
+        this.heartIcon = heartIcon;
+    }
 
     public void render(Graphics2D g, PlayerSandboxEntity player, EchoSandboxClone echo,
                        DayNightCycle dayNight, int viewW, int viewH) {
@@ -41,21 +55,37 @@ public class SandboxHUD {
             int hx = x + i * 14;
             int hpForHeart = health - i * 2;
 
-            if (hpForHeart >= 2) {
-                // Full heart (Vibrant crimson)
-                g.setColor(new Color(235, 45, 75));
-            } else if (hpForHeart == 1) {
-                // Half heart
-                g.setColor(new Color(245, 130, 80));
+            if (heartIcon != null) {
+                renderHeartIcon(g, hpForHeart, hx, y);
             } else {
-                // Empty heart outline
-                g.setColor(new Color(60, 60, 70));
+                if (hpForHeart >= 2) {
+                    g.setColor(new Color(235, 45, 75));
+                } else if (hpForHeart == 1) {
+                    g.setColor(new Color(245, 130, 80));
+                } else {
+                    g.setColor(new Color(60, 60, 70));
+                }
+                g.fillOval(hx, y, 5, 5);
+                g.fillOval(hx + 4, y, 5, 5);
+                int[] px = {hx, hx + 9, hx + 4};
+                int[] py = {y + 3, y + 3, y + 9};
+                g.fillPolygon(px, py, 3);
             }
-            g.fillOval(hx, y, 5, 5);
-            g.fillOval(hx + 4, y, 5, 5);
-            int[] px = {hx, hx + 9, hx + 4};
-            int[] py = {y + 3, y + 3, y + 9};
-            g.fillPolygon(px, py, 3);
+        }
+    }
+
+    /** Draws one real heart-icon frame: full/half/empty are the same base art with a tint
+     *  wash (half = darkened, empty = desaturated to grey) — same technique used throughout
+     *  this asset pass for synthesizing state variants from a single real source image. */
+    private void renderHeartIcon(Graphics2D g, int hpForHeart, int hx, int y) {
+        int size = 11;
+        g.drawImage(heartIcon, hx, y, size, size, null);
+        if (hpForHeart == 1) {
+            g.setColor(new Color(20, 20, 25, 130));
+            g.fillRect(hx + size / 2, y, size - size / 2, size);
+        } else if (hpForHeart < 1) {
+            g.setColor(new Color(40, 40, 45, 190));
+            g.fillRect(hx, y, size, size);
         }
     }
 

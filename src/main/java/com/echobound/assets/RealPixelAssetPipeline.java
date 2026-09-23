@@ -65,7 +65,8 @@ public class RealPixelAssetPipeline {
                new File(processedDir, "mobs"),
                new File(processedDir, "npcs"),
                new File(processedDir, "effects"),
-               new File(processedDir, "tools"));
+               new File(processedDir, "tools"),
+               new File(processedDir, "ui"));
     }
 
     private void mkdirs(File... dirs) {
@@ -87,6 +88,7 @@ public class RealPixelAssetPipeline {
         buildWeaponSheet();
         buildToolSheet();
         buildEffectsSheet();
+        buildHeartIcon();
         log("Pipeline complete — " + sheetsBuilt + " sheet(s) built from real assets.");
         return sheetsBuilt;
     }
@@ -607,6 +609,38 @@ public class RealPixelAssetPipeline {
             write(effectSheet, new File(processedDir, "effects/effects_sheet.png"), "effects_sheet");
         } else {
             log("[SKIP] effects_sheet — no ui tiles readable");
+        }
+    }
+
+    // ── Step 9: Heart Icon from "Pixel Art HUD Bars and Icons" (16×16) ───────
+
+    /**
+     * Source is the CC0 "Pixel Art HUD Bars and Icons" pack (opengameart.org/content/
+     * pixel-art-hud-bars-and-icons, by grizzlei): a small 144×46 sheet of resource bars and
+     * icons. The heart icon (3rd of 4 in the bottom icon row, hand-picked off a pixel-bounds
+     * scan of the actual sheet — an 9×9 region at (18,35)) is the only piece used here.
+     * SandboxHUD.renderHearts() previously approximated a heart out of two filled circles and
+     * a triangle — exactly the "geometric figure" look this whole asset pass targets — so this
+     * feeds real heart art into that renderer instead. Scaled up to 16×16 for a crisp base to
+     * downscale from at render time.
+     */
+    private void buildHeartIcon() {
+        File src = new File(externalDir, "ui/heart_icon.png");
+        if (!src.exists()) {
+            log("[SKIP] heart_icon — ui/heart_icon.png not found");
+            return;
+        }
+        try {
+            BufferedImage source = ImageIO.read(src);
+            if (source == null) { log("[FAIL] heart_icon — unreadable"); return; }
+            BufferedImage scaled = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = scaled.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            g.drawImage(source, 0, 0, 16, 16, null);
+            g.dispose();
+            write(scaled, new File(processedDir, "ui/heart_icon.png"), "heart_icon");
+        } catch (IOException e) {
+            log("[FAIL] heart_icon — " + e.getMessage());
         }
     }
 

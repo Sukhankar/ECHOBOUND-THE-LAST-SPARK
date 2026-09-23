@@ -531,36 +531,48 @@ public class RealPixelAssetPipeline {
         }
     }
 
-    // ── Step 7: Tool Sheet (160×16) from kenney platformer ───────────────────
+    // ── Step 7: Tool Sheet (160×16) from CC0 Tool Icons (FacadeGaikan) ────────
+
+    /**
+     * Source is the FacadeGaikan sub-collection of "CC0 Tool Icons" (opengameart.org/content/
+     * cc0-tool-icons, node/29290) — real 32×32 pickaxe/hoe/shovel art in wood/stone/metal
+     * tiers, matching this game's own tiered tool progression. No axe or fishing rod exists
+     * in this sub-pack, so only 9 of the 10 slots are real art; the 10th reuses pick_metal
+     * rather than leaving a gap.
+     */
+    private static final String[] TOOL_ICON_FILES = {
+        "pick_wood.png", "pick_stone.png", "pick_metal.png",
+        "hoe_wood.png", "hoe_stone.png", "hoe_metal.png",
+        "shovel_wood.png", "shovel_stone.png", "shovel_metal.png",
+        "pick_metal.png",
+    };
 
     private void buildToolSheet() {
-        File src = new File(externalDir, "tiles/kenney_platformer_tiles.png");
-        if (!src.exists()) {
-            log("[SKIP] tool_sheet — source not found");
+        File dir = new File(externalDir, "tools");
+        if (!dir.isDirectory()) {
+            log("[SKIP] tool_sheet — tools directory not found");
             return;
         }
-        try {
-            BufferedImage source = ImageIO.read(src);
-            if (source == null) return;
+        BufferedImage toolSheet = new BufferedImage(160, TILE_SIZE, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = toolSheet.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
-            // Source grid is 18×18 (see PLATFORMER_SRC_TILE), not 16×16.
-            int srcW = 18, srcH = 18; // dead path: source file no longer exists, kept only for graceful SKIP
-            int srcCols = source.getWidth() / srcW;
-            BufferedImage toolSheet = new BufferedImage(160, TILE_SIZE, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = toolSheet.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-
-            for (int i = 0; i < 10; i++) {
-                int srcCol = (i * 5 + 1) % Math.max(1, srcCols);
-                try {
-                    BufferedImage tile = source.getSubimage(srcCol * srcW, 0, srcW, srcH);
-                    g.drawImage(tile, i * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE, null);
-                } catch (Exception ignored) {}
-            }
-            g.dispose();
+        int placed = 0;
+        for (int i = 0; i < TOOL_ICON_FILES.length; i++) {
+            File f = new File(dir, TOOL_ICON_FILES[i]);
+            if (!f.exists()) continue;
+            try {
+                BufferedImage icon = ImageIO.read(f);
+                if (icon == null) continue;
+                g.drawImage(icon, i * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE, null);
+                placed++;
+            } catch (IOException ignored) {}
+        }
+        g.dispose();
+        if (placed > 0) {
             write(toolSheet, new File(processedDir, "tools/tool_sheet.png"), "tool_sheet");
-        } catch (IOException e) {
-            log("[FAIL] tool_sheet — " + e.getMessage());
+        } else {
+            log("[SKIP] tool_sheet — no icon files could be loaded");
         }
     }
 

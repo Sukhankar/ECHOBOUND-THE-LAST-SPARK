@@ -192,8 +192,8 @@ public class Part7MenusAndSavesVerification {
         controller.adjustOptionRight();
         controller.adjustOptionLeft();
 
-        // Navigate to Back (index 4)
-        while (controller.getOptionsCursor() != 4) {
+        // Navigate to Back (last item — derived from the enum so adding options doesn't break this)
+        while (controller.getOptionsCursor() != TitleMenuController.OptionsItem.BACK.ordinal()) {
             controller.moveCursorDown();
         }
         controller.selectCurrent();

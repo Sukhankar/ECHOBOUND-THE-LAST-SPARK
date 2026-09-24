@@ -37,6 +37,12 @@ public class SettingsManager {
             settings.showDebugOverlay = Boolean.parseBoolean(props.getProperty("showDebugOverlay", "false"));
             settings.firstTimeUser = Boolean.parseBoolean(props.getProperty("firstTimeUser", "true"));
 
+            try {
+                settings.difficulty = Difficulty.valueOf(props.getProperty("difficulty", "NORMAL"));
+            } catch (Exception e) {
+                settings.difficulty = Difficulty.NORMAL;
+            }
+
             String res = props.getProperty("resolutionProfile", "PIXEL_STANDARD");
             try {
                 settings.resolutionProfile = ResolutionProfile.valueOf(res);
@@ -58,6 +64,7 @@ public class SettingsManager {
             props.setProperty("showDebugOverlay", String.valueOf(settings.showDebugOverlay));
             props.setProperty("firstTimeUser", String.valueOf(settings.firstTimeUser));
             props.setProperty("resolutionProfile", settings.resolutionProfile.name());
+            props.setProperty("difficulty", settings.difficulty.name());
 
             try (OutputStream out = Files.newOutputStream(configPath)) {
                 props.store(out, "ECHOBOUND Game Settings");
@@ -71,6 +78,7 @@ public class SettingsManager {
     public void applySettings(SoundEngine soundEngine) {
         if (soundEngine != null) {
             soundEngine.setMasterVolume(settings.masterVolume);
+            soundEngine.setSfxVolume(settings.sfxVolume);
             soundEngine.setMusicVolume(settings.masterVolume);
             soundEngine.setSoundEnabled(settings.masterVolume > 0.001f);
         }

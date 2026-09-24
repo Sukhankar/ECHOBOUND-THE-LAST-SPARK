@@ -23,6 +23,7 @@ import com.echobound.sandbox.PixelSandboxRenderer;
 import com.echobound.sandbox.SandboxHUD;
 import com.echobound.sandbox.WorldChunk;
 import com.echobound.save.SaveManager;
+import com.echobound.settings.GameSettings;
 import com.echobound.settings.SettingsManager;
 import com.echobound.tutorial.TutorialStep;
 import com.echobound.ui.dev.AnimationViewerOverlay;
@@ -98,6 +99,14 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     private float shakeMagnitude = 0f;
     private final java.util.Random shakeRandom = new java.util.Random();
 
+    /** Pushes every persisted setting that has a live consumer into the running game. */
+    private void applyLiveSettings() {
+        GameSettings st = settingsManager.getSettings();
+        settingsManager.applySettings(ctx.soundEngine);
+        ctx.particleFXManager.setActiveLimit(st.resolutionProfile.maxParticles);
+        ctx.difficulty = st.difficulty;
+    }
+
     private void triggerShake(float magnitude, float duration) {
         if (!settingsManager.getSettings().cameraShakeEnabled) return;
         shakeMagnitude = magnitude;
@@ -125,8 +134,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         // A saved masterVolume from a previous session was loaded into GameSettings above,
         // but nothing ever pushed it into the live SoundEngine — every launch silently reset
         // to full volume regardless of what was saved. Apply once here at startup.
-        settingsManager.applySettings(ctx.soundEngine);
-        ctx.particleFXManager.setActiveLimit(settingsManager.getSettings().resolutionProfile.maxParticles);
+        applyLiveSettings();
         this.menuController = new TitleMenuController(saveManager, settingsManager);
         this.windowManager = new WindowManager();
         this.assetManager = new AssetManager();
@@ -210,6 +218,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
         if (shakeTimer > 0f) {
             shakeTimer = Math.max(0f, shakeTimer - dt);
+        }
+
+        if (ctx.consumePlayerHurt()) {
+            renderer.getRinAnimController().triggerAction(AnimationState.HURT);
+            triggerShake(3.0f, 0.2f);
         }
 
         if (showAnimationViewer) {
@@ -735,15 +748,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             if (code == KeyEvent.VK_DOWN) menuController.moveCursorDown();
             if (code == KeyEvent.VK_LEFT) {
                 menuController.adjustOptionLeft();
-                settingsManager.applySettings(ctx.soundEngine);
-                ctx.particleFXManager.setActiveLimit(settingsManager.getSettings().resolutionProfile.maxParticles);
-                settingsManager.save();
+                applyLiveSettings();
             }
             if (code == KeyEvent.VK_RIGHT) {
                 menuController.adjustOptionRight();
-                settingsManager.applySettings(ctx.soundEngine);
-                ctx.particleFXManager.setActiveLimit(settingsManager.getSettings().resolutionProfile.maxParticles);
-                settingsManager.save();
+                applyLiveSettings();
             }
             if (code == KeyEvent.VK_ENTER || code == KeyEvent.VK_SPACE) {
                 boolean valid = menuController.selectCurrent();

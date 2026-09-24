@@ -15,6 +15,7 @@ import com.echobound.cooking.CookingManager;
 import com.echobound.crafting.CraftingEngine;
 import com.echobound.crafting.CraftingRecipe;
 import com.echobound.entity.mob.MobEntity;
+import com.echobound.settings.Difficulty;
 import com.echobound.entity.mob.MobManager;
 import com.echobound.entity.mob.MobType;
 import com.echobound.faction.FactionManager;
@@ -186,6 +187,7 @@ public class UnifiedGameContext {
 
         // 7. Update Mobs AI relative to player position and safe zones
         mobManager.update(dt, player.getPosition(), structureManager);
+        updateCombat(dt);
         updateWildlifeSpawning(dt);
         updateLegendarySpawning(dt);
 
@@ -342,11 +344,86 @@ public class UnifiedGameContext {
             attackCenter.x - 22.0f, attackCenter.y - 22.0f, attackCenter.z - 16.0f,
             attackCenter.x + 22.0f, attackCenter.y + 22.0f, attackCenter.z + 24.0f
         );
-        mobManager.applyDamageArea(attackArea, damage, player.getPosition(), playerInventory);
-        soundEngine.play(SoundType.MINE_BLOCK);
+        int hits = mobManager.applyDamageArea(attackArea, damage, player.getPosition(), playerInventory);
+        if (hits > 0) {
+            // Impact feedback only on an actual hit — a damage number used to pop up on every
+            // swing, including ones that hit nothing, so damage looked meaningless.
+            soundEngine.play(SoundType.ENEMY_HIT);
+            particleFXManager.spawnBurst(attackCenter.x, attackCenter.y, attackCenter.z, new java.awt.Color(255, 215, 60), 10, 45.0f);
+            floatingTextManager.spawnDamage(attackCenter.x, attackCenter.y, attackCenter.z + 10.0f, damage, weapon.hasEchoDuplicate());
+        } else {
+            soundEngine.play(SoundType.MINE_BLOCK); // swing whoosh
+        }
+    }
 
-        // Attack FX
-        particleFXManager.spawnBurst(attackCenter.x, attackCenter.y, attackCenter.z, new java.awt.Color(255, 215, 60), 10, 45.0f);
-        floatingTextManager.spawnDamage(attackCenter.x, attackCenter.y, attackCenter.z + 10.0f, damage, weapon.hasEchoDuplicate());
+    // ── Incoming damage ───────────────────────────────────────────────────────────────
+
+    /** Set from the Options menu (see EchoBoundMasterEngine.applyLiveSettings). */
+    public Difficulty difficulty = Difficulty.NORMAL;
+
+    private static final float HIT_INVULNERABILITY = 0.8f;
+    private static final float RESPAWN_INVULNERABILITY = 3.0f;
+    private static final float REGEN_INTERVAL = 3.0f;
+    private float invulnerabilityTimer = 0f;
+    private float timeSinceHurt = 999f;
+    private float regenTimer = 0f;
+    private boolean playerHurtThisTick = false;
+
+    /** True once per damaging hit, so the engine can play the hurt animation and screen shake. */
+    public boolean consumePlayerHurt() {
+        boolean hurt = playerHurtThisTick;
+        playerHurtThisTick = false;
+        return hurt;
+    }
+
+    /** Applies enemy damage, scaled by difficulty, with brief invulnerability after each hit. */
+    public void damagePlayer(int baseDamage) {
+        if (invulnerabilityTimer > 0f || player.health <= 0) return;
+        int dmg = Math.max(1, Math.round(baseDamage * difficulty.damageMultiplier));
+        player.health = Math.max(0, player.health - dmg);
+        invulnerabilityTimer = HIT_INVULNERABILITY;
+        timeSinceHurt = 0f;
+        regenTimer = 0f;
+        playerHurtThisTick = true;
+        soundEngine.play(SoundType.PLAYER_HURT);
+        particleFXManager.spawnBurst(player.pos.x, player.pos.y, player.pos.z + 10.0f, new java.awt.Color(220, 40, 50), 8, 40.0f);
+        floatingTextManager.spawnDamage(player.pos.x, player.pos.y, player.pos.z + 24.0f, dmg, false);
+        if (player.health <= 0) respawnPlayer();
+    }
+
+    private void respawnPlayer() {
+        int topZ = world.getTopSolidBlockZ(8, 8);
+        player.pos.set(8 * WorldChunk.BLOCK_PIXEL_SIZE, 8 * WorldChunk.BLOCK_PIXEL_SIZE,
+                       (topZ + 1) * WorldChunk.BLOCK_PIXEL_SIZE);
+        player.vel.set(0, 0, 0);
+        player.health = player.maxHealth;
+        invulnerabilityTimer = RESPAWN_INVULNERABILITY;
+        floatingTextManager.spawnMessage(player.pos.x, player.pos.y, player.pos.z + 32.0f,
+                                         "Defeated - respawned", new java.awt.Color(255, 170, 60));
+    }
+
+    private void updateCombat(float dt) {
+        invulnerabilityTimer = Math.max(0f, invulnerabilityTimer - dt);
+        timeSinceHurt += dt;
+
+        for (MobEntity mob : mobManager.getActiveMobs()) {
+            if (!mob.strikeReady) continue;
+            mob.strikeReady = false;
+            if (mob.isAlive) {
+                // MobType.contactDamage is on the mob-HP scale (12-35); the player has 12 health
+                // points total, so it's scaled down to roughly 1-4 per hit.
+                damagePlayer(Math.max(1, Math.round(mob.type.contactDamage / 10.0f)));
+            }
+        }
+
+        if (player.health > 0 && player.health < player.maxHealth
+                && timeSinceHurt >= difficulty.regenDelaySeconds) {
+            regenTimer += dt;
+            if (regenTimer >= REGEN_INTERVAL) {
+                regenTimer = 0f;
+                player.health++;
+                floatingTextManager.spawnHeal(player.pos.x, player.pos.y, player.pos.z + 24.0f, 1);
+            }
+        }
     }
 }

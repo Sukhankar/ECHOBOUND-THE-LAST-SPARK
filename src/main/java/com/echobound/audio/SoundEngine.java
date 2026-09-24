@@ -32,6 +32,7 @@ public class SoundEngine {
         SAMPLE_PATHS.put(SoundType.CORRUPTION_ALARM, "audio/npc/corruption_alarm.wav");
         SAMPLE_PATHS.put(SoundType.ECHO_RECORD, "audio/interface/interface1.wav");
         SAMPLE_PATHS.put(SoundType.ECHO_REPLAY, "audio/interface/interface2.wav");
+        SAMPLE_PATHS.put(SoundType.ENEMY_HIT, "audio/npc/monster_hit.wav");
     }
 
     /** Looping background music track — real recorded CC0 track, not procedural. */
@@ -53,6 +54,7 @@ public class SoundEngine {
     private final File assetsDir;
     private boolean soundEnabled = true;
     private float masterVolume = 1.0f;
+    private float sfxVolume = 1.0f;
     private float musicVolume = 0.5f;
     private int totalSoundsPlayed = 0;
     private int realSamplesLoaded = 0;
@@ -87,7 +89,7 @@ public class SoundEngine {
     public int getRealSamplesLoaded() { return realSamplesLoaded; }
 
     public void play(SoundType type) {
-        if (!soundEnabled || masterVolume <= 0.0f || type == null) return;
+        if (!soundEnabled || sfxLevel() <= 0.0f || type == null) return;
         totalSoundsPlayed++;
 
         File sample = sampleFiles.get(type);
@@ -112,7 +114,7 @@ public class SoundEngine {
                 // Apply volume
                 byte[] playBuffer = new byte[rawBytes.length];
                 for (int i = 0; i < rawBytes.length; i++) {
-                    playBuffer[i] = (byte) (rawBytes[i] * masterVolume);
+                    playBuffer[i] = (byte) (rawBytes[i] * sfxLevel());
                 }
 
                 line.write(playBuffer, 0, playBuffer.length);
@@ -132,7 +134,7 @@ public class SoundEngine {
             clip.open(in);
             if (clip.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
                 FloatControl gain = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
-                float clamped = Math.max(0.0001f, masterVolume);
+                float clamped = Math.max(0.0001f, sfxLevel());
                 gain.setValue(Math.max(gain.getMinimum(),
                         Math.min(gain.getMaximum(), (float) (20 * Math.log10(clamped)))));
             }
@@ -188,6 +190,19 @@ public class SoundEngine {
         float clamped = Math.max(0.0001f, musicVolume);
         gain.setValue(Math.max(gain.getMinimum(),
                 Math.min(gain.getMaximum(), (float) (20 * Math.log10(clamped)))));
+    }
+
+    /** Effective loudness of sound effects: the master slider scaled by the SFX slider. */
+    private float sfxLevel() {
+        return masterVolume * sfxVolume;
+    }
+
+    public void setSfxVolume(float volume) {
+        this.sfxVolume = Math.max(0.0f, Math.min(1.0f, volume));
+    }
+
+    public float getSfxVolume() {
+        return sfxVolume;
     }
 
     public void setSoundEnabled(boolean enabled) {

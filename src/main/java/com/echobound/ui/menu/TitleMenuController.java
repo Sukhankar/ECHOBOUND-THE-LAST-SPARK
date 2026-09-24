@@ -20,6 +20,8 @@ public class TitleMenuController {
 
     public enum OptionsItem {
         MASTER_VOLUME("Master Volume"),
+        SFX_VOLUME("SFX Volume"),
+        DIFFICULTY("Difficulty"),
         RESOLUTION("Resolution Scale"),
         CAMERA_SHAKE("Camera Shake"),
         DEBUG_OVERLAY("Debug Info"),
@@ -142,6 +144,8 @@ public class TitleMenuController {
             OptionsItem item = OptionsItem.values()[optionsCursor];
             switch (item) {
                 case MASTER_VOLUME -> settingsManager.getSettings().adjustMasterVolume(-0.1f);
+                case SFX_VOLUME -> settingsManager.getSettings().adjustSfxVolume(-0.1f);
+                case DIFFICULTY -> settingsManager.getSettings().difficulty = settingsManager.getSettings().difficulty.cycle(-1);
                 case RESOLUTION -> settingsManager.getSettings().cycleResolution();
                 case CAMERA_SHAKE -> settingsManager.getSettings().toggleCameraShake();
                 case DEBUG_OVERLAY -> settingsManager.getSettings().toggleDebugOverlay();
@@ -156,6 +160,8 @@ public class TitleMenuController {
             OptionsItem item = OptionsItem.values()[optionsCursor];
             switch (item) {
                 case MASTER_VOLUME -> settingsManager.getSettings().adjustMasterVolume(+0.1f);
+                case SFX_VOLUME -> settingsManager.getSettings().adjustSfxVolume(+0.1f);
+                case DIFFICULTY -> settingsManager.getSettings().difficulty = settingsManager.getSettings().difficulty.cycle(+1);
                 case RESOLUTION -> settingsManager.getSettings().cycleResolution();
                 case CAMERA_SHAKE -> settingsManager.getSettings().toggleCameraShake();
                 case DEBUG_OVERLAY -> settingsManager.getSettings().toggleDebugOverlay();

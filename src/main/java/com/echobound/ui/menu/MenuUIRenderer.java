@@ -192,7 +192,9 @@ public class MenuUIRenderer {
 
             String label = (selected ? "> " : "  ") + item.label + ": ";
             String valueStr = switch (item) {
-                case MASTER_VOLUME -> String.format("[%d%%]", (int) (settings.masterVolume * 100));
+                case MASTER_VOLUME -> String.format("[%d%%]", (int) Math.round(settings.masterVolume * 100));
+                case SFX_VOLUME -> String.format("[%d%%]", (int) Math.round(settings.sfxVolume * 100));
+                case DIFFICULTY -> "[" + settings.difficulty.label + "]";
                 case RESOLUTION -> "[" + settings.resolutionProfile.label + "]";
                 case CAMERA_SHAKE -> "[" + (settings.cameraShakeEnabled ? "ON" : "OFF") + "]";
                 case DEBUG_OVERLAY -> "[" + (settings.showDebugOverlay ? "ON" : "OFF") + "]";

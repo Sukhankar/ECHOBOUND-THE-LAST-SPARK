@@ -39,6 +39,11 @@ public class MobEntity {
     public AIState state = AIState.IDLE;
     public boolean isAlive = true;
     public float attackCooldown = 0.0f;
+    /** Set when a hostile mob's swing lands; the game context consumes it and applies the damage. */
+    public boolean strikeReady = false;
+
+    private static final float ATTACK_WINDUP = 0.6f;   // grace after closing in, so it's dodgeable
+    private static final float ATTACK_INTERVAL = 1.2f; // time between successive strikes
 
     // Wander behavior (PASSIVE/NEUTRAL creatures): pick a direction, hold it briefly, repeat.
     private float wanderDirX = 0f, wanderDirY = 0f;
@@ -95,9 +100,18 @@ public class MobEntity {
         } else {
             float distToPlayer = (float) position.distanceTo(playerPos);
             if (distToPlayer <= ATTACK_RANGE) {
+                // attackCooldown was ticked down in update() but nothing ever used it to strike:
+                // hostile mobs reached ATTACK state and just stood there dealing no damage.
+                if (state != AIState.ATTACK) {
+                    attackCooldown = Math.max(attackCooldown, ATTACK_WINDUP);
+                }
                 state = AIState.ATTACK;
                 velocity.x = 0;
                 velocity.y = 0;
+                if (attackCooldown <= 0f) {
+                    strikeReady = true;
+                    attackCooldown = ATTACK_INTERVAL;
+                }
             } else if (distToPlayer <= CHASE_RANGE) {
                 // Kept as a single CHASE band (not split into DETECT/CHASE sub-ranges) —
                 // hostile mobs weren't what needed richer states; DETECT exists on the enum

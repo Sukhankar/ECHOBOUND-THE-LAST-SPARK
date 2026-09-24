@@ -12,7 +12,13 @@ import com.echobound.magic.MagicSchool;
 import com.echobound.npc.NPCDefinition;
 import com.echobound.physics3d.Vec3;
 import com.echobound.pool.SpellProjectile;
+import com.echobound.items.ItemCategory;
+import com.echobound.items.ItemRegistry;
+import com.echobound.quest.QuestDefinition;
+import com.echobound.quest.QuestStatus;
+import com.echobound.quest.QuestTier;
 import com.echobound.sandbox.EchoSandboxClone;
+import com.echobound.sandbox.Inventory;
 import com.echobound.sandbox.PixelSandboxRenderer;
 import com.echobound.sandbox.SandboxHUD;
 import com.echobound.sandbox.WorldChunk;
@@ -430,8 +436,9 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         ctx.floatingTextManager.render(g, camX, camY);
 
         // 6. Render HUD
+        updateHudInfo();
         hud.render(g, ctx.player, echo, ctx.dayNightCycle,
-                   Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
+                   Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT, hudInfo);
 
         // 7. Render In-Game Modal Windows (Inventory, Crafting, Quest Log)
         if (windowManager.hasActiveWindow()) {
@@ -622,6 +629,50 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         g.drawString(hint, textX, boxY + 56);
     }
 
+    private final SandboxHUD.HudInfo hudInfo = new SandboxHUD.HudInfo();
+    private int hudQuestRefreshCountdown = 0;
+
+    /** Fills in the live data the HUD's richer panels show. Quests are only re-scanned about
+     *  twice a second (QuestManager has no cheap "active quests" view — it walks every quest). */
+    private void updateHudInfo() {
+        hudInfo.world = ctx.world;
+        hudInfo.coins = ctx.playerInventory.getOrDefault(ItemRegistry.CURRENCY_SPARK_COIN, 0);
+
+        if (hudInfo.portrait == null) {
+            BufferedImage sheet = assetManager.getSprite("characters/rin_sheet.png");
+            if (sheet != null && sheet.getWidth() >= 32 && sheet.getHeight() >= 32) {
+                BufferedImage copy = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D pg = copy.createGraphics();
+                pg.drawImage(sheet.getSubimage(0, 0, 32, 32), 0, 0, null);
+                pg.dispose();
+                hudInfo.portrait = copy;
+            }
+            hudInfo.navIcons[0] = assetManager.getItemCategoryIcon(ItemCategory.ARMOR);
+            hudInfo.navIcons[1] = assetManager.getItemCategoryIcon(ItemCategory.WEAPONS);
+            hudInfo.navIcons[2] = assetManager.getItemCategoryIcon(ItemCategory.MAGIC);
+        }
+
+        int bx = (int) Math.floor(ctx.player.pos.x / WorldChunk.BLOCK_PIXEL_SIZE);
+        int by = (int) Math.floor(ctx.player.pos.y / WorldChunk.BLOCK_PIXEL_SIZE);
+        String biome = ctx.world.getBiomeAt(bx, by).name();
+        hudInfo.biomeName = biome.charAt(0) + biome.substring(1).toLowerCase();
+
+        if (--hudQuestRefreshCountdown <= 0) {
+            hudQuestRefreshCountdown = 30;
+            int n = 0;
+            for (QuestTier tier : QuestTier.values()) {
+                for (QuestDefinition q : ctx.questManager.getQuestsByTier(tier)) {
+                    if (q.status == QuestStatus.IN_PROGRESS && n < hudInfo.questTitles.length) {
+                        hudInfo.questTitles[n] = q.title;
+                        hudInfo.questProgress[n] = q.currentProgress + " / " + q.targetProgress;
+                        n++;
+                    }
+                }
+            }
+            hudInfo.questCount = n;
+        }
+    }
+
     private void renderPauseMenu(Graphics2D g) {
         g.setColor(new Color(0, 0, 0, 175));
         g.fillRect(0, 0, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
@@ -745,6 +796,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
             if (code == KeyEvent.VK_SPACE) jumpJustPressed = true;
             if (code == KeyEvent.VK_SHIFT) dashJustPressed = true;
+            // The HUD has always advertised "[1-8] Quick Slot", but only the mouse wheel
+            // actually changed the selected slot — the number keys did nothing.
+            if (code >= KeyEvent.VK_1 && code < KeyEvent.VK_1 + Inventory.QUICK_SLOT_COUNT) {
+                ctx.player.inventory.setSelectedSlot(code - KeyEvent.VK_1);
+            }
             if (code == KeyEvent.VK_ESCAPE) {
                 if (activeDialogueNPC != null) {
                     activeDialogueNPC = null;

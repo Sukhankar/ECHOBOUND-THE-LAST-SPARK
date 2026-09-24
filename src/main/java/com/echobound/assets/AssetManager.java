@@ -455,12 +455,34 @@ public class AssetManager {
         return sheet.getSprite(Math.abs(idx) % sheet.getColumns());
     }
 
+    // Every terrain tile drawn used to build a new SpriteSheet and slice a fresh getSubimage()
+    // on the spot — thousands per frame, each one a new BufferedImage whose Java2D surface
+    // data had to be initialized from scratch (profiling showed ~2/3 of all frame time in
+    // that one drawImage call). Slices are now cut once, as standalone ARGB images, and reused.
+    private BufferedImage tileCacheSource;
+    private BufferedImage[][] tileCache; // [row][col]
+
     public BufferedImage getTileTexture(BlockType type, int variant) {
         BufferedImage sheetImg = getSprite("tiles/terrain_sheet.png");
-        SpriteSheet sheet = new SpriteSheet(sheetImg, 16, 16);
-        int row = type.ordinal() % sheet.getRows();
-        int col = Math.abs(variant) % sheet.getColumns();
-        return sheet.getSprite(col, row);
+        if (tileCache == null || tileCacheSource != sheetImg) {
+            SpriteSheet sheet = new SpriteSheet(sheetImg, 16, 16);
+            BufferedImage[][] cache = new BufferedImage[sheet.getRows()][sheet.getColumns()];
+            for (int r = 0; r < cache.length; r++) {
+                for (int c = 0; c < cache[r].length; c++) {
+                    BufferedImage slice = sheet.getSprite(c, r);
+                    BufferedImage copy = new BufferedImage(slice.getWidth(), slice.getHeight(), BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D cg = copy.createGraphics();
+                    cg.drawImage(slice, 0, 0, null);
+                    cg.dispose();
+                    cache[r][c] = copy;
+                }
+            }
+            tileCache = cache;
+            tileCacheSource = sheetImg;
+        }
+        int row = type.ordinal() % tileCache.length;
+        int col = Math.abs(variant) % tileCache[row].length;
+        return tileCache[row][col];
     }
 
     /**

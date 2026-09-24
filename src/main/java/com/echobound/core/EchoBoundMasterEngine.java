@@ -68,6 +68,15 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     private Thread gameThread;
     private boolean initialTutorialShown = false;
 
+    // Reused every frame instead of allocating a fresh Font/Color per NPC/mob per frame.
+    private static final Font NPC_NAME_FONT = new Font("Monospaced", Font.BOLD, 9);
+    private static final Font NPC_ACTIVITY_FONT = new Font("Monospaced", Font.PLAIN, 8);
+    private static final Color NPC_NAME_COLOR = new Color(255, 230, 140);
+    private static final Color NPC_ACTIVITY_COLOR = new Color(180, 210, 255);
+    private static final Color SHADOW_COLOR = new Color(0, 0, 0, 75);
+    private static final Color MOB_HP_BACK = new Color(20, 20, 30, 210);
+    private static final Color MOB_HP_FILL = new Color(220, 40, 50);
+
     // Camera
     private float camX = 0;
     private float camY = 0;
@@ -303,6 +312,9 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         // between two different leftover images every other frame. That reads as flicker.
         g.setColor(new Color(10, 14, 24));
         g.fillRect(0, 0, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
+        // Pixel art is only ever scaled nearest-neighbor; set once here so per-sprite draws
+        // don't each need their own Graphics2D copy just to carry this hint.
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
         // Apply screen shake for this frame only — camX/camY are restored to their true
         // smoothed value at the end of this method so the next tick's camera tracking math
@@ -337,29 +349,26 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             if (nx < -40 || nx > Window.INTERNAL_WIDTH + 40 || ny < -40 || ny > Window.INTERNAL_HEIGHT + 40) continue;
 
             // Ground drop shadow
-            g.setColor(new Color(0, 0, 0, 75));
+            g.setColor(SHADOW_COLOR);
             g.fillOval(nx - 7, ny - 2, 14, 5);
 
             // Animated NPC Sprite from schedule controller
             BufferedImage npcFrame = npcVisualController != null ? npcVisualController.getCurrentFrame(npc.id) : null;
             if (npcFrame != null) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-                g2.drawImage(npcFrame, nx - 16, ny - 30, 32, 32, null);
-                g2.dispose();
+                g.drawImage(npcFrame, nx - 16, ny - 30, 32, 32, null);
             }
 
             // Name Tag & Profession badge
-            g.setFont(new Font("Monospaced", Font.BOLD, 9));
-            g.setColor(new Color(255, 230, 140));
+            g.setFont(NPC_NAME_FONT);
+            g.setColor(NPC_NAME_COLOR);
             FontMetrics fm = g.getFontMetrics();
             int nw = fm.stringWidth(npc.name);
             int nameY = placeLabel(labelBounds, nx - nw / 2, ny - 33, nw, fm);
             g.drawString(npc.name, nx - nw / 2, nameY);
 
             if (npc.currentActivity != null && !npc.currentActivity.isEmpty()) {
-                g.setFont(new Font("Monospaced", Font.PLAIN, 8));
-                g.setColor(new Color(180, 210, 255));
+                g.setFont(NPC_ACTIVITY_FONT);
+                g.setColor(NPC_ACTIVITY_COLOR);
                 String actStr = "[" + npc.currentActivity + "]";
                 FontMetrics afm = g.getFontMetrics();
                 int aw = afm.stringWidth(actStr);
@@ -384,7 +393,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             int half = drawSize / 2;
 
             // Ground drop shadow
-            g.setColor(new Color(0, 0, 0, 75));
+            g.setColor(SHADOW_COLOR);
             g.fillOval(sx - half / 2, sy - 3, half, 6);
 
             // Animated Mob Sprite — one controller per mob instance (not per species), state
@@ -396,16 +405,13 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             mobAnim.update(0.016f);
             BufferedImage mobFrame = mobAnim.getCurrentFrame();
             if (mobFrame != null) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-                g2.drawImage(mobFrame, sx - half, sy - drawSize + 4, drawSize, drawSize, null);
-                g2.dispose();
+                g.drawImage(mobFrame, sx - half, sy - drawSize + 4, drawSize, drawSize, null);
             }
 
             // Health bar with pixel frame
-            g.setColor(new Color(20, 20, 30, 210));
+            g.setColor(MOB_HP_BACK);
             g.fillRect(sx - 10, sy - drawSize - 4, 20, 4);
-            g.setColor(new Color(220, 40, 50));
+            g.setColor(MOB_HP_FILL);
             int hpW = Math.max(0, (int) (18.0f * ((float) mob.currentHealth / mob.type.maxHealth)));
             g.fillRect(sx - 9, sy - drawSize - 3, hpW, 2);
         }

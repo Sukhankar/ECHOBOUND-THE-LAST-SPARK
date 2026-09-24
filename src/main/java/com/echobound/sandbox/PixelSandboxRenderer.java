@@ -12,6 +12,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 
 public class PixelSandboxRenderer {
+    private static final Color FRONT_FACE_SHADE = new Color(0, 0, 0, 85);
     public static final float Z_ELEVATION_PX = 8.0f; // Pixels lifted per Z layer
 
     private final AssetManager assetManager;
@@ -127,7 +128,7 @@ public class PixelSandboxRenderer {
                 g.drawImage(tileImg, sx, sy + bs, sx + bs, sy + bs + (int) Z_ELEVATION_PX,
                             0, Math.max(0, tileImg.getHeight() - (int) Z_ELEVATION_PX),
                             tileImg.getWidth(), tileImg.getHeight(), null);
-                g.setColor(new Color(0, 0, 0, 85));
+                g.setColor(FRONT_FACE_SHADE);
                 g.fillRect(sx, sy + bs, bs, (int) Z_ELEVATION_PX);
             } else {
                 g.setColor(b.shadowColor);

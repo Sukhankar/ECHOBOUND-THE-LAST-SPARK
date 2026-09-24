@@ -19,7 +19,17 @@ public class SandboxWorld {
         return (((long) cx) << 32) | (cy & 0xFFFFFFFFL);
     }
 
+    // One-entry lookup cache. The renderer and physics probe blocks in long runs inside the
+    // same 16x16 chunk, but every getBlock() paid for a HashMap lookup that autoboxes a Long
+    // key — ~12k+ throwaway allocations per rendered frame. Consecutive hits on the same
+    // chunk now skip the map entirely. The world is only touched from the game thread.
+    private WorldChunk lastChunk;
+    private int lastChunkX = Integer.MIN_VALUE, lastChunkY = Integer.MIN_VALUE;
+
     public WorldChunk getOrCreateChunk(int cx, int cy) {
+        if (lastChunk != null && cx == lastChunkX && cy == lastChunkY) {
+            return lastChunk;
+        }
         long key = getChunkKey(cx, cy);
         WorldChunk chunk = chunks.get(key);
         if (chunk == null) {
@@ -27,6 +37,9 @@ public class SandboxWorld {
             chunk.generateTerrain(seed);
             chunks.put(key, chunk);
         }
+        lastChunk = chunk;
+        lastChunkX = cx;
+        lastChunkY = cy;
         return chunk;
     }
 

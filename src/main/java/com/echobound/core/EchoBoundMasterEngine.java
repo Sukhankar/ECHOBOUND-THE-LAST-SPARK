@@ -12,11 +12,18 @@ import com.echobound.magic.MagicSchool;
 import com.echobound.npc.NPCDefinition;
 import com.echobound.physics3d.Vec3;
 import com.echobound.pool.SpellProjectile;
+import com.echobound.items.ItemCategory;
+import com.echobound.items.ItemRegistry;
+import com.echobound.quest.QuestDefinition;
+import com.echobound.quest.QuestStatus;
+import com.echobound.quest.QuestTier;
 import com.echobound.sandbox.EchoSandboxClone;
+import com.echobound.sandbox.Inventory;
 import com.echobound.sandbox.PixelSandboxRenderer;
 import com.echobound.sandbox.SandboxHUD;
 import com.echobound.sandbox.WorldChunk;
 import com.echobound.save.SaveManager;
+import com.echobound.settings.GameSettings;
 import com.echobound.settings.SettingsManager;
 import com.echobound.tutorial.TutorialStep;
 import com.echobound.ui.dev.AnimationViewerOverlay;
@@ -68,9 +75,43 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
     private Thread gameThread;
     private boolean initialTutorialShown = false;
 
+    // Reused every frame instead of allocating a fresh Font/Color per NPC/mob per frame.
+    private static final Font NPC_NAME_FONT = new Font("Monospaced", Font.BOLD, 9);
+    private static final Font NPC_ACTIVITY_FONT = new Font("Monospaced", Font.PLAIN, 8);
+    private static final Color NPC_NAME_COLOR = new Color(255, 230, 140);
+    private static final Color NPC_ACTIVITY_COLOR = new Color(180, 210, 255);
+    private static final Color SHADOW_COLOR = new Color(0, 0, 0, 75);
+    private static final Color MOB_HP_BACK = new Color(20, 20, 30, 210);
+    private static final Color MOB_HP_FILL = new Color(220, 40, 50);
+
     // Camera
     private float camX = 0;
     private float camY = 0;
+
+    // Screen shake — GameSettings.cameraShakeEnabled existed as a togglable setting with
+    // nothing in the live engine that ever produced any shake at all to gate (the only
+    // ScreenShake/Camera classes in the codebase belong to the unused legacy GameEngine.java).
+    // This is a minimal, self-contained implementation: a brief random camera punch on the
+    // player's own melee swing, added into camX/camY only for the duration of render() and
+    // subtracted back out immediately after, so it never perturbs the actual tracked camera
+    // position other rendering math (and the next tick's smoothing) relies on.
+    private float shakeTimer = 0f;
+    private float shakeMagnitude = 0f;
+    private final java.util.Random shakeRandom = new java.util.Random();
+
+    /** Pushes every persisted setting that has a live consumer into the running game. */
+    private void applyLiveSettings() {
+        GameSettings st = settingsManager.getSettings();
+        settingsManager.applySettings(ctx.soundEngine);
+        ctx.particleFXManager.setActiveLimit(st.resolutionProfile.maxParticles);
+        ctx.difficulty = st.difficulty;
+    }
+
+    private void triggerShake(float magnitude, float duration) {
+        if (!settingsManager.getSettings().cameraShakeEnabled) return;
+        shakeMagnitude = magnitude;
+        shakeTimer = duration;
+    }
 
     // Keys state
     private final boolean[] keys = new boolean[512];
@@ -90,6 +131,10 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         this.ctx = new UnifiedGameContext();
         this.saveManager = new SaveManager();
         this.settingsManager = new SettingsManager();
+        // A saved masterVolume from a previous session was loaded into GameSettings above,
+        // but nothing ever pushed it into the live SoundEngine — every launch silently reset
+        // to full volume regardless of what was saved. Apply once here at startup.
+        applyLiveSettings();
         this.menuController = new TitleMenuController(saveManager, settingsManager);
         this.windowManager = new WindowManager();
         this.assetManager = new AssetManager();
@@ -170,6 +215,15 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
     private void tick(float dt) {
         GameState state = menuController.getCurrentState();
+
+        if (shakeTimer > 0f) {
+            shakeTimer = Math.max(0f, shakeTimer - dt);
+        }
+
+        if (ctx.consumePlayerHurt()) {
+            renderer.getRinAnimController().triggerAction(AnimationState.HURT);
+            triggerShake(3.0f, 0.2f);
+        }
 
         if (showAnimationViewer) {
             animationViewerOverlay.update(dt);
@@ -277,6 +331,20 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         // between two different leftover images every other frame. That reads as flicker.
         g.setColor(new Color(10, 14, 24));
         g.fillRect(0, 0, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
+        // Pixel art is only ever scaled nearest-neighbor; set once here so per-sprite draws
+        // don't each need their own Graphics2D copy just to carry this hint.
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+
+        // Apply screen shake for this frame only — camX/camY are restored to their true
+        // smoothed value at the end of this method so the next tick's camera tracking math
+        // is never thrown off by it.
+        float shakeAppliedX = 0f, shakeAppliedY = 0f;
+        if (shakeTimer > 0f) {
+            shakeAppliedX = (shakeRandom.nextFloat() * 2f - 1f) * shakeMagnitude;
+            shakeAppliedY = (shakeRandom.nextFloat() * 2f - 1f) * shakeMagnitude;
+            camX += shakeAppliedX;
+            camY += shakeAppliedY;
+        }
 
         // 1. Render Voxel World & Traversal with Layered Equipment & Animated Weapon
         renderer.render(g, ctx.world, ctx.player, echo, ctx.dayNightCycle,
@@ -300,29 +368,26 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             if (nx < -40 || nx > Window.INTERNAL_WIDTH + 40 || ny < -40 || ny > Window.INTERNAL_HEIGHT + 40) continue;
 
             // Ground drop shadow
-            g.setColor(new Color(0, 0, 0, 75));
+            g.setColor(SHADOW_COLOR);
             g.fillOval(nx - 7, ny - 2, 14, 5);
 
             // Animated NPC Sprite from schedule controller
             BufferedImage npcFrame = npcVisualController != null ? npcVisualController.getCurrentFrame(npc.id) : null;
             if (npcFrame != null) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-                g2.drawImage(npcFrame, nx - 16, ny - 30, 32, 32, null);
-                g2.dispose();
+                g.drawImage(npcFrame, nx - 16, ny - 30, 32, 32, null);
             }
 
             // Name Tag & Profession badge
-            g.setFont(new Font("Monospaced", Font.BOLD, 9));
-            g.setColor(new Color(255, 230, 140));
+            g.setFont(NPC_NAME_FONT);
+            g.setColor(NPC_NAME_COLOR);
             FontMetrics fm = g.getFontMetrics();
             int nw = fm.stringWidth(npc.name);
             int nameY = placeLabel(labelBounds, nx - nw / 2, ny - 33, nw, fm);
             g.drawString(npc.name, nx - nw / 2, nameY);
 
             if (npc.currentActivity != null && !npc.currentActivity.isEmpty()) {
-                g.setFont(new Font("Monospaced", Font.PLAIN, 8));
-                g.setColor(new Color(180, 210, 255));
+                g.setFont(NPC_ACTIVITY_FONT);
+                g.setColor(NPC_ACTIVITY_COLOR);
                 String actStr = "[" + npc.currentActivity + "]";
                 FontMetrics afm = g.getFontMetrics();
                 int aw = afm.stringWidth(actStr);
@@ -347,7 +412,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             int half = drawSize / 2;
 
             // Ground drop shadow
-            g.setColor(new Color(0, 0, 0, 75));
+            g.setColor(SHADOW_COLOR);
             g.fillOval(sx - half / 2, sy - 3, half, 6);
 
             // Animated Mob Sprite — one controller per mob instance (not per species), state
@@ -359,16 +424,13 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
             mobAnim.update(0.016f);
             BufferedImage mobFrame = mobAnim.getCurrentFrame();
             if (mobFrame != null) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-                g2.drawImage(mobFrame, sx - half, sy - drawSize + 4, drawSize, drawSize, null);
-                g2.dispose();
+                g.drawImage(mobFrame, sx - half, sy - drawSize + 4, drawSize, drawSize, null);
             }
 
             // Health bar with pixel frame
-            g.setColor(new Color(20, 20, 30, 210));
+            g.setColor(MOB_HP_BACK);
             g.fillRect(sx - 10, sy - drawSize - 4, 20, 4);
-            g.setColor(new Color(220, 40, 50));
+            g.setColor(MOB_HP_FILL);
             int hpW = Math.max(0, (int) (18.0f * ((float) mob.currentHealth / mob.type.maxHealth)));
             g.fillRect(sx - 9, sy - drawSize - 3, hpW, 2);
         }
@@ -387,8 +449,9 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         ctx.floatingTextManager.render(g, camX, camY);
 
         // 6. Render HUD
+        updateHudInfo();
         hud.render(g, ctx.player, echo, ctx.dayNightCycle,
-                   Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
+                   Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT, hudInfo);
 
         // 7. Render In-Game Modal Windows (Inventory, Crafting, Quest Log)
         if (windowManager.hasActiveWindow()) {
@@ -409,11 +472,17 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         if (showAnimationViewer) {
             animationViewerOverlay.render(g, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
         }
-        if (showPerformanceHUD) {
+        // showPerformanceHUD (F10, session-only) and the persisted "Debug Info" Options-menu
+        // setting used to be two entirely disconnected flags — toggling the menu option had
+        // no effect on this overlay at all. Either one now shows it.
+        if (showPerformanceHUD || settingsManager.getSettings().showDebugOverlay) {
             PerformanceDebugOverlay.render(g, ctx, assetManager, currentFps,
                                            lastFrameTimeMs, lastPhysicsTimeMs, lastRenderTimeMs,
                                            Window.INTERNAL_WIDTH);
         }
+
+        camX -= shakeAppliedX;
+        camY -= shakeAppliedY;
 
         window.present();
     }
@@ -573,6 +642,50 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         g.drawString(hint, textX, boxY + 56);
     }
 
+    private final SandboxHUD.HudInfo hudInfo = new SandboxHUD.HudInfo();
+    private int hudQuestRefreshCountdown = 0;
+
+    /** Fills in the live data the HUD's richer panels show. Quests are only re-scanned about
+     *  twice a second (QuestManager has no cheap "active quests" view — it walks every quest). */
+    private void updateHudInfo() {
+        hudInfo.world = ctx.world;
+        hudInfo.coins = ctx.playerInventory.getOrDefault(ItemRegistry.CURRENCY_SPARK_COIN, 0);
+
+        if (hudInfo.portrait == null) {
+            BufferedImage sheet = assetManager.getSprite("characters/rin_sheet.png");
+            if (sheet != null && sheet.getWidth() >= 32 && sheet.getHeight() >= 32) {
+                BufferedImage copy = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D pg = copy.createGraphics();
+                pg.drawImage(sheet.getSubimage(0, 0, 32, 32), 0, 0, null);
+                pg.dispose();
+                hudInfo.portrait = copy;
+            }
+            hudInfo.navIcons[0] = assetManager.getItemCategoryIcon(ItemCategory.ARMOR);
+            hudInfo.navIcons[1] = assetManager.getItemCategoryIcon(ItemCategory.WEAPONS);
+            hudInfo.navIcons[2] = assetManager.getItemCategoryIcon(ItemCategory.MAGIC);
+        }
+
+        int bx = (int) Math.floor(ctx.player.pos.x / WorldChunk.BLOCK_PIXEL_SIZE);
+        int by = (int) Math.floor(ctx.player.pos.y / WorldChunk.BLOCK_PIXEL_SIZE);
+        String biome = ctx.world.getBiomeAt(bx, by).name();
+        hudInfo.biomeName = biome.charAt(0) + biome.substring(1).toLowerCase();
+
+        if (--hudQuestRefreshCountdown <= 0) {
+            hudQuestRefreshCountdown = 30;
+            int n = 0;
+            for (QuestTier tier : QuestTier.values()) {
+                for (QuestDefinition q : ctx.questManager.getQuestsByTier(tier)) {
+                    if (q.status == QuestStatus.IN_PROGRESS && n < hudInfo.questTitles.length) {
+                        hudInfo.questTitles[n] = q.title;
+                        hudInfo.questProgress[n] = q.currentProgress + " / " + q.targetProgress;
+                        n++;
+                    }
+                }
+            }
+            hudInfo.questCount = n;
+        }
+    }
+
     private void renderPauseMenu(Graphics2D g) {
         g.setColor(new Color(0, 0, 0, 175));
         g.fillRect(0, 0, Window.INTERNAL_WIDTH, Window.INTERNAL_HEIGHT);
@@ -633,10 +746,21 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         if (state == GameState.TITLE_MENU || state == GameState.OPTIONS_MENU || state == GameState.SAVE_SELECT_MENU) {
             if (code == KeyEvent.VK_UP) menuController.moveCursorUp();
             if (code == KeyEvent.VK_DOWN) menuController.moveCursorDown();
-            if (code == KeyEvent.VK_LEFT) menuController.adjustOptionLeft();
-            if (code == KeyEvent.VK_RIGHT) menuController.adjustOptionRight();
+            if (code == KeyEvent.VK_LEFT) {
+                menuController.adjustOptionLeft();
+                applyLiveSettings();
+            }
+            if (code == KeyEvent.VK_RIGHT) {
+                menuController.adjustOptionRight();
+                applyLiveSettings();
+            }
             if (code == KeyEvent.VK_ENTER || code == KeyEvent.VK_SPACE) {
                 boolean valid = menuController.selectCurrent();
+                if (menuController.isExitRequested()) {
+                    stop();
+                    System.exit(0);
+                    return;
+                }
                 if (valid && menuController.getCurrentState() == GameState.PLAYING) {
                     // Start or resume game
                     int slot = saveManager.getMostRecentSlot();
@@ -681,6 +805,11 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
 
             if (code == KeyEvent.VK_SPACE) jumpJustPressed = true;
             if (code == KeyEvent.VK_SHIFT) dashJustPressed = true;
+            // The HUD has always advertised "[1-8] Quick Slot", but only the mouse wheel
+            // actually changed the selected slot — the number keys did nothing.
+            if (code >= KeyEvent.VK_1 && code < KeyEvent.VK_1 + Inventory.QUICK_SLOT_COUNT) {
+                ctx.player.inventory.setSelectedSlot(code - KeyEvent.VK_1);
+            }
             if (code == KeyEvent.VK_ESCAPE) {
                 if (activeDialogueNPC != null) {
                     activeDialogueNPC = null;
@@ -796,6 +925,7 @@ public class EchoBoundMasterEngine implements Runnable, KeyListener, MouseListen
         );
         ctx.attackWithWeapon(ctx.activeWeapon, attackCenter);
         renderer.getRinAnimController().triggerAction(AnimationState.ATTACK);
+        triggerShake(1.5f, 0.12f);
     }
     @Override
     public void mouseReleased(MouseEvent e) {

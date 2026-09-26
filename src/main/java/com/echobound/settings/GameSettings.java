@@ -12,6 +12,7 @@ public class GameSettings implements Serializable {
     public ResolutionProfile resolutionProfile = ResolutionProfile.PIXEL_STANDARD;
     public boolean cameraShakeEnabled = true;
     public boolean showDebugOverlay = false;
+    public Difficulty difficulty = Difficulty.NORMAL;
     public boolean vsync = true;
     public boolean firstTimeUser = true;
 
@@ -23,6 +24,10 @@ public class GameSettings implements Serializable {
         } else {
             resolutionProfile = ResolutionProfile.PIXEL_SAVER;
         }
+    }
+
+    public void adjustSfxVolume(float delta) {
+        sfxVolume = Math.max(0.0f, Math.min(1.0f, sfxVolume + delta));
     }
 
     public void adjustMasterVolume(float delta) {

@@ -20,6 +20,8 @@ public class TitleMenuController {
 
     public enum OptionsItem {
         MASTER_VOLUME("Master Volume"),
+        SFX_VOLUME("SFX Volume"),
+        DIFFICULTY("Difficulty"),
         RESOLUTION("Resolution Scale"),
         CAMERA_SHAKE("Camera Shake"),
         DEBUG_OVERLAY("Debug Info"),
@@ -33,6 +35,15 @@ public class TitleMenuController {
     private int titleCursor = 0;
     private int optionsCursor = 0;
     private int saveSlotCursor = 0;
+    // selectCurrent() returning false was previously indistinguishable from "invalid
+    // selection, do nothing" — EchoBoundMasterEngine's key handler only ever checked the
+    // true/PLAYING case, so choosing "Exit to Desktop" silently did nothing at all. This
+    // flag lets the caller tell the two apart and actually terminate the app.
+    private boolean exitRequested = false;
+
+    public boolean isExitRequested() {
+        return exitRequested;
+    }
 
     private final SaveManager saveManager;
     private final SettingsManager settingsManager;
@@ -133,6 +144,8 @@ public class TitleMenuController {
             OptionsItem item = OptionsItem.values()[optionsCursor];
             switch (item) {
                 case MASTER_VOLUME -> settingsManager.getSettings().adjustMasterVolume(-0.1f);
+                case SFX_VOLUME -> settingsManager.getSettings().adjustSfxVolume(-0.1f);
+                case DIFFICULTY -> settingsManager.getSettings().difficulty = settingsManager.getSettings().difficulty.cycle(-1);
                 case RESOLUTION -> settingsManager.getSettings().cycleResolution();
                 case CAMERA_SHAKE -> settingsManager.getSettings().toggleCameraShake();
                 case DEBUG_OVERLAY -> settingsManager.getSettings().toggleDebugOverlay();
@@ -147,6 +160,8 @@ public class TitleMenuController {
             OptionsItem item = OptionsItem.values()[optionsCursor];
             switch (item) {
                 case MASTER_VOLUME -> settingsManager.getSettings().adjustMasterVolume(+0.1f);
+                case SFX_VOLUME -> settingsManager.getSettings().adjustSfxVolume(+0.1f);
+                case DIFFICULTY -> settingsManager.getSettings().difficulty = settingsManager.getSettings().difficulty.cycle(+1);
                 case RESOLUTION -> settingsManager.getSettings().cycleResolution();
                 case CAMERA_SHAKE -> settingsManager.getSettings().toggleCameraShake();
                 case DEBUG_OVERLAY -> settingsManager.getSettings().toggleDebugOverlay();
@@ -180,6 +195,7 @@ public class TitleMenuController {
                     optionsCursor = 0;
                 }
                 case EXIT -> {
+                    exitRequested = true;
                     return false;
                 }
             }

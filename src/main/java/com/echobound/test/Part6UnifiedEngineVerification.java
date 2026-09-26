@@ -62,7 +62,7 @@ public class Part6UnifiedEngineVerification {
     }
 
     private static void testProceduralSoundSynthesisAndEngine() {
-        assertEquals(14, SoundType.values().length, "Must have 14 procedural sound types");
+        assertEquals(16, SoundType.values().length, "Must have 16 procedural sound types (14 original + player-hurt and enemy-hit)");
 
         // Synthesize and check buffers
         for (SoundType type : SoundType.values()) {

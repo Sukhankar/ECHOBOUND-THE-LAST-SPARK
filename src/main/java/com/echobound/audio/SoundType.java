@@ -14,7 +14,9 @@ public enum SoundType {
     CORRUPTION_ALARM(500, "Ominous descending nocturnal warning"),
     BOSS_ROAR(600, "Heavy sub-bass resonant growl"),
     ECHO_RECORD(100, "Spark synchronization ping"),
-    ECHO_REPLAY(120, "Temporal rewind shimmer");
+    ECHO_REPLAY(120, "Temporal rewind shimmer"),
+    PLAYER_HURT(220, "Descending pained buzz"),
+    ENEMY_HIT(90, "Sharp impact crack");
 
     public final int durationMs;
     public final String description;

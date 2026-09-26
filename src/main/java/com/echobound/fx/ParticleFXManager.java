@@ -12,6 +12,16 @@ public class ParticleFXManager {
     private final Random random = new Random(42);
     private float weatherSpawnAccumulator = 0.0f;
 
+    // ResolutionProfile.maxParticles (Pixel Saver=20 / Standard=60 / Plus=150) was defined
+    // but nothing ever read it — the Options-menu "Resolution Scale" setting had zero effect
+    // on anything. This is the one real, safe knob that setting can pull: a lower-end profile
+    // now genuinely caps simultaneous on-screen particles instead of always maxing out at 256.
+    private int activeLimit = MAX_PARTICLES;
+
+    public void setActiveLimit(int limit) {
+        this.activeLimit = Math.max(1, Math.min(MAX_PARTICLES, limit));
+    }
+
     public ParticleFXManager() {
         for (int i = 0; i < MAX_PARTICLES; i++) {
             pool[i] = new PixelParticle();
@@ -19,12 +29,16 @@ public class ParticleFXManager {
     }
 
     private PixelParticle findFreeParticle() {
+        int active = 0;
         for (int i = 0; i < MAX_PARTICLES; i++) {
-            if (!pool[i].active) {
-                return pool[i];
+            if (pool[i].active) active++;
+        }
+        if (active < activeLimit) {
+            for (int i = 0; i < MAX_PARTICLES; i++) {
+                if (!pool[i].active) return pool[i];
             }
         }
-        return pool[0]; // Recycle oldest if full
+        return pool[0]; // At the configured cap, or pool exhausted — recycle oldest.
     }
 
     public void spawnBurst(float x, float y, float z, Color color, int count, float speed) {

@@ -88,6 +88,15 @@ public class SoundSynthesizer {
                     float freq = 400.0f + 600.0f * progress;
                     sample = sineWave(t, freq) * (1.0f - progress * 0.5f);
                 }
+                case PLAYER_HURT -> {
+                    // Falling saw buzz with a noisy edge
+                    float freq = 380.0f - 220.0f * progress;
+                    sample = (sawWave(t, freq) * 0.7f + (rng.nextFloat() * 2.0f - 1.0f) * 0.3f) * (1.0f - progress);
+                }
+                case ENEMY_HIT -> {
+                    // Short noise crack over a low triangle thump
+                    sample = ((rng.nextFloat() * 2.0f - 1.0f) * 0.6f + triangleWave(t, 240.0f) * 0.4f) * (1.0f - progress);
+                }
             }
 
             // Convert float [-1.0, 1.0] to signed 8-bit byte [-128, 127]

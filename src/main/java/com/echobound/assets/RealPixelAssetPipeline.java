@@ -169,18 +169,20 @@ public class RealPixelAssetPipeline {
 
     /**
      * Source is the CC0 "32x32 RPG Character Sprites" pack (opengameart.org/content/
-     * 32x32-rpg-character-sprites, by Eldiran): a 384×672 sheet, 32×32 cells on a 12×21 grid.
-     * Confirmed visually off a labeled contact sheet: each character's full standing pose is
-     * drawn tall across TWO stacked cells (a 32×64 region — head/shoulders in the top cell,
-     * torso/legs in the bottom), not one 32×32 cell alone, so a single cell only ever shows
-     * half a character. Nine row-pairs (0-1, 2-3, ... 16-17), column 0, were hand-picked for
-     * visually distinct NPC archetypes (robed priest, villager, knight, hooded rogue, gilded
-     * paladin, etc.). The source uses classic magenta (255,0,255) color-key transparency, not
-     * an alpha channel, so it's keyed out to real alpha here before compositing — left as-is,
-     * every NPC would render inside a solid pink box.
+     * 32x32-rpg-character-sprites, by Eldiran): a 384x672 sheet, 32x32 cells on a 12x21 grid.
+     * Each ROW is one complete character (columns are facing/pose variants; column 0 is the
+     * front-facing stand). Row 0 and row 20 are the pack's blank white mannequin templates and
+     * are skipped. (An earlier version of this method wrongly treated a character as two
+     * stacked cells and squashed a 32x64 region — which actually merged two different
+     * characters into one garbled sprite.) Nine rows were picked for visually distinct
+     * archetypes: armored knight, villager, red-bandana rogue, blue knight, hooded mage, white-
+     * robed priest, dark-hooded rogue, wide-hat traveler, adventurer.
+     * The source uses classic magenta (255,0,255) color-key transparency, not an alpha channel,
+     * so it's keyed out to real alpha here before compositing — left as-is, every NPC would
+     * render inside a solid pink box.
      */
     private static final int RPGCHAR_CELL = 32;
-    private static final int[] NPC_SOURCE_ROW_PAIRS = {0, 2, 4, 6, 8, 10, 12, 14, 16};
+    private static final int[] NPC_SOURCE_ROWS = {1, 2, 3, 4, 5, 6, 8, 9, 10};
 
     private void buildNPCSheet() {
         File src = new File(externalDir, "characters/rpg_characters.png");
@@ -193,18 +195,14 @@ public class RealPixelAssetPipeline {
             if (raw == null) { log("[FAIL] npc_sheet — could not read source"); return; }
             BufferedImage source = keyOutMagenta(raw);
 
-            int npcCount = NPC_SOURCE_ROW_PAIRS.length;
+            int npcCount = NPC_SOURCE_ROWS.length;
             BufferedImage npcSheet = new BufferedImage(256, npcCount * 2 * NPC_FRAME_H, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = npcSheet.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 
             for (int npc = 0; npc < npcCount; npc++) {
-                int topRow = NPC_SOURCE_ROW_PAIRS[npc];
-                // Full 32×64 standing pose (both stacked cells), scaled down to one 32×32 NPC
-                // token — a deliberate squash, not a crop, so the whole character silhouette
-                // (head to feet) still reads in the smaller space this game's NPCs use.
                 BufferedImage charTile = source.getSubimage(
-                    0, topRow * RPGCHAR_CELL, RPGCHAR_CELL, RPGCHAR_CELL * 2);
+                    0, NPC_SOURCE_ROWS[npc] * RPGCHAR_CELL, RPGCHAR_CELL, RPGCHAR_CELL);
 
                 int dstRow0 = npc * 2;       // IDLE / WORK row
                 int dstRow1 = npc * 2 + 1;   // SIT / SLEEP row

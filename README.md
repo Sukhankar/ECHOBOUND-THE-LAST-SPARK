@@ -6,6 +6,21 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![Build](https://img.shields.io/badge/Build-Passing-brightgreen.svg?style=for-the-badge)]()
 [![Genre](https://img.shields.io/badge/Genre-Open--World%20Pixel%20Sandbox%20RPG-purple.svg?style=for-the-badge)]()
+[![Wiki](https://img.shields.io/badge/Official-Wiki%20Hub-red.svg?style=for-the-badge)](wiki/Home.md)
+
+---
+
+## 🏴‍☠️ Official Wiki & Compendium
+
+Dive deep into the canonical lore, game mechanics, and Straw Hat crew dynamics:
+- **[📖 Master Wiki Compendium](WIKI.md)**
+- **[⚡ Official Wiki Hub](wiki/Home.md)**:
+  - [🗺️ The Story & World Lore](wiki/The-Story-and-World-Lore.md)
+  - [👥 The Crew & Characters](wiki/The-Crew-and-Characters.md)
+  - [🔥 Magic, Combat & Runecrafting](wiki/Magic-Combat-and-Runecrafting.md)
+  - [🐉 Creatures, Pets & Bosses](wiki/Creatures-Pets-and-Bosses.md)
+  - [💰 Economy, Farming & Life-Sim](wiki/Economy-Farming-and-LifeSim.md)
+  - [🎮 Gameplay, Traversal & Echo Clone](wiki/Gameplay-Traversal-and-EchoClone.md)
 
 ---
 

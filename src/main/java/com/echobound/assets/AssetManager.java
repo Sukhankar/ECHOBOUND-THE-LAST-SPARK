@@ -455,12 +455,34 @@ public class AssetManager {
         return sheet.getSprite(Math.abs(idx) % sheet.getColumns());
     }
 
+    // Every terrain tile drawn used to build a new SpriteSheet and slice a fresh getSubimage()
+    // on the spot — thousands per frame, each one a new BufferedImage whose Java2D surface
+    // data had to be initialized from scratch (profiling showed ~2/3 of all frame time in
+    // that one drawImage call). Slices are now cut once, as standalone ARGB images, and reused.
+    private BufferedImage tileCacheSource;
+    private BufferedImage[][] tileCache; // [row][col]
+
     public BufferedImage getTileTexture(BlockType type, int variant) {
         BufferedImage sheetImg = getSprite("tiles/terrain_sheet.png");
-        SpriteSheet sheet = new SpriteSheet(sheetImg, 16, 16);
-        int row = type.ordinal() % sheet.getRows();
-        int col = Math.abs(variant) % sheet.getColumns();
-        return sheet.getSprite(col, row);
+        if (tileCache == null || tileCacheSource != sheetImg) {
+            SpriteSheet sheet = new SpriteSheet(sheetImg, 16, 16);
+            BufferedImage[][] cache = new BufferedImage[sheet.getRows()][sheet.getColumns()];
+            for (int r = 0; r < cache.length; r++) {
+                for (int c = 0; c < cache[r].length; c++) {
+                    BufferedImage slice = sheet.getSprite(c, r);
+                    BufferedImage copy = new BufferedImage(slice.getWidth(), slice.getHeight(), BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D cg = copy.createGraphics();
+                    cg.drawImage(slice, 0, 0, null);
+                    cg.dispose();
+                    cache[r][c] = copy;
+                }
+            }
+            tileCache = cache;
+            tileCacheSource = sheetImg;
+        }
+        int row = type.ordinal() % tileCache.length;
+        int col = Math.abs(variant) % tileCache[row].length;
+        return tileCache[row][col];
     }
 
     /**
@@ -486,9 +508,40 @@ public class AssetManager {
         }
         if (img == null) {
             img = generateHouseFallback();
+        } else {
+            img = keyOutEdgeBackground(img);
         }
         spriteCache.put(key, img);
         return img;
+    }
+
+    /** The house GIFs ship with an opaque sky-blue backdrop baked in (no transparency), which
+     *  rendered as a solid blue box around every building. Flood-fills that color inward from
+     *  the image border to transparent, so blue windows inside the house are left intact. */
+    private static BufferedImage keyOutEdgeBackground(BufferedImage src) {
+        int w = src.getWidth(), h = src.getHeight();
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = out.createGraphics();
+        g.drawImage(src, 0, 0, null);
+        g.dispose();
+        int bg = out.getRGB(0, 0) | 0xFF000000;
+        boolean[] seen = new boolean[w * h];
+        java.util.ArrayDeque<int[]> queue = new java.util.ArrayDeque<>();
+        for (int x = 0; x < w; x++) { queue.add(new int[]{x, 0}); queue.add(new int[]{x, h - 1}); }
+        for (int y = 0; y < h; y++) { queue.add(new int[]{0, y}); queue.add(new int[]{w - 1, y}); }
+        while (!queue.isEmpty()) {
+            int[] p = queue.poll();
+            int x = p[0], y = p[1];
+            if (x < 0 || y < 0 || x >= w || y >= h || seen[y * w + x]) continue;
+            seen[y * w + x] = true;
+            if ((out.getRGB(x, y) | 0xFF000000) != bg) continue;
+            out.setRGB(x, y, 0);
+            queue.add(new int[]{x + 1, y});
+            queue.add(new int[]{x - 1, y});
+            queue.add(new int[]{x, y + 1});
+            queue.add(new int[]{x, y - 1});
+        }
+        return out;
     }
 
     private BufferedImage generateHouseFallback() {

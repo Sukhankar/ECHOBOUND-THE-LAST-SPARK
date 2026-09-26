@@ -26,13 +26,13 @@ Listen up chat, let us cook for a minute. You just woke up in **Aethelgard**, an
 Enter **Rin**, our cyan-scarf-donning protagonist with astronomical Main Character Energy (Gear 5 Luffy level reckless optimism), accompanied by **Pip**, a floating ball of pure ancient frequency who gives major Tony Tony Chopper emergency mascot energy. Together with an eccentric crew of survivors, you're setting sail across treacherous biomes to recover the **Echo Cores** (the Poneglyphs of Sound) and ignite **The Last Spark** (The One Piece) before the world is locked in permanent buffering.
 
 Detailed sub-pages can also be explored in the [`wiki/`](file:///home/erpadmin/Pojects/EchoBound/wiki/) directory:
-- [📖 Home Overview](file:///home/erpadmin/Pojects/EchoBound/wiki/Home.md)
-- [🗺️ The Story & World Lore](file:///home/erpadmin/Pojects/EchoBound/wiki/The-Story-and-World-Lore.md)
-- [👥 The Crew & Characters](file:///home/erpadmin/Pojects/EchoBound/wiki/The-Crew-and-Characters.md)
-- [🔥 Magic, Combat & Runecrafting](file:///home/erpadmin/Pojects/EchoBound/wiki/Magic-Combat-and-Runecrafting.md)
-- [🐉 Creatures, Pets & Bosses](file:///home/erpadmin/Pojects/EchoBound/wiki/Creatures-Pets-and-Bosses.md)
-- [💰 Economy, Farming & Life-Sim](file:///home/erpadmin/Pojects/EchoBound/wiki/Economy-Farming-and-LifeSim.md)
-- [🎮 Gameplay, Traversal & Echo Clone](file:///home/erpadmin/Pojects/EchoBound/wiki/Gameplay-Traversal-and-EchoClone.md)
+- [📖 Home Overview](wiki/Home.md)
+- [🗺️ The Story & World Lore](wiki/The-Story-and-World-Lore.md)
+- [👥 The Crew & Characters](wiki/The-Crew-and-Characters.md)
+- [🔥 Magic, Combat & Runecrafting](wiki/Magic-Combat-and-Runecrafting.md)
+- [🐉 Creatures, Pets & Bosses](wiki/Creatures-Pets-and-Bosses.md)
+- [💰 Economy, Farming & Life-Sim](wiki/Economy-Farming-and-LifeSim.md)
+- [🎮 Gameplay, Traversal & Echo Clone](wiki/Gameplay-Traversal-and-EchoClone.md)
 
 ---
 

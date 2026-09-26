@@ -22,12 +22,12 @@ Explore the complete canonical archives below. Every page is packed with deep lo
 
 | Section | Title | Description | One Piece Parallel |
 | :--- | :--- | :--- | :--- |
-| **01** | [📖 The Story & World Lore](file:///home/erpadmin/Pojects/EchoBound/wiki/The-Story-and-World-Lore.md) | The Great Dissonance, the 5 Wild Biomes, the Resonance Towers, and the ancient mystery of the First Spark. | The Void Century, the World Government, & the Grand Line |
-| **02** | [👥 The Crew & Characters](file:///home/erpadmin/Pojects/EchoBound/wiki/The-Crew-and-Characters.md) | Deep dossiers on Rin, Pip, Mira, Sylvan, Kael, and the tyrannical Conductor. | The Straw Hat Pirates & the Admirals |
-| **03** | [🔥 Magic, Combat & Runecrafting](file:///home/erpadmin/Pojects/EchoBound/wiki/Magic-Combat-and-Runecrafting.md) | 8 Elemental Sparks, 6 signature Dual Fusions, 3-socket weapon runecrafting, and combat scaling. | Devil Fruits & Advanced Armament Haki |
-| **04** | [🐉 Creatures, Pets & Bosses](file:///home/erpadmin/Pojects/EchoBound/wiki/Creatures-Pets-and-Bosses.md) | Wildlife temperament, 5 tameable companions, mounting mechanics, and the legendary Obsidian Dragon. | Sea Kings, Zou, & Emperor-tier Boss Fights |
-| **05** | [💰 Economy, Farming & Life-Sim](file:///home/erpadmin/Pojects/EchoBound/wiki/Economy-Farming-and-LifeSim.md) | Spark Coins (Berries), NPC shops, 5 climate-mutating crops, gourmet cooking buffs, and 8 crafting stations. | Water 7 Economy, Sanji's Kitchen, & Shipwright Crafting |
-| **06** | [🎮 Gameplay, Traversal & Echo Clone](file:///home/erpadmin/Pojects/EchoBound/wiki/Gameplay-Traversal-and-EchoClone.md) | Movement tech, scarf gliding, 6-second Echo Sandbox Clone automation, 3D voxel mining, and controls. | Gear 2nd Agility & Mirage Tempo Automation |
+| **01** | [📖 The Story & World Lore](The-Story-and-World-Lore.md) | The Great Dissonance, the 5 Wild Biomes, the Resonance Towers, and the ancient mystery of the First Spark. | The Void Century, the World Government, & the Grand Line |
+| **02** | [👥 The Crew & Characters](The-Crew-and-Characters.md) | Deep dossiers on Rin, Pip, Mira, Sylvan, Kael, and the tyrannical Conductor. | The Straw Hat Pirates & the Admirals |
+| **03** | [🔥 Magic, Combat & Runecrafting](Magic-Combat-and-Runecrafting.md) | 8 Elemental Sparks, 6 signature Dual Fusions, 3-socket weapon runecrafting, and combat scaling. | Devil Fruits & Advanced Armament Haki |
+| **04** | [🐉 Creatures, Pets & Bosses](Creatures-Pets-and-Bosses.md) | Wildlife temperament, 5 tameable companions, mounting mechanics, and the legendary Obsidian Dragon. | Sea Kings, Zou, & Emperor-tier Boss Fights |
+| **05** | [💰 Economy, Farming & Life-Sim](Economy-Farming-and-LifeSim.md) | Spark Coins (Berries), NPC shops, 5 climate-mutating crops, gourmet cooking buffs, and 8 crafting stations. | Water 7 Economy, Sanji's Kitchen, & Shipwright Crafting |
+| **06** | [🎮 Gameplay, Traversal & Echo Clone](Gameplay-Traversal-and-EchoClone.md) | Movement tech, scarf gliding, 6-second Echo Sandbox Clone automation, 3D voxel mining, and controls. | Gear 2nd Agility & Mirage Tempo Automation |
 
 ---
 
